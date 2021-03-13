@@ -150,6 +150,49 @@ def hdf5_file_finder(hdf5_parent_folder):
 
     return hdf5_file_list
 
+def xy_position_counter(apoptosis_time_dict, tracking_filelist):
+    hdf5_file_path, error_log = [], []
+    cell_count = 0
+    cumulative_N_cells_hist = np.zeros((num_bins, num_bins))
+    cumulative_N_events_hist = np.zeros((num_bins, num_bins))
+    list_xy = []
+    for apop_ID in tqdm(apoptosis_time_dict):
+        expt = 'GV' +str(re.findall(r"GV(\d+)", apop_ID)[0])
+        position = re.findall(r"Pos(\d+)", apop_ID)[0]
+        position = 'Pos' + position
+        expt_position = os.path.join(expt,position,'') ## additional '' here so that / added to end of string
+        cell_ID = int((re.findall(r"(\d+)_.FP", apop_ID))[0])
+        print("ID", apop_ID)
+
+        if expt_position not in hdf5_file_path:
+            ## load that track data
+            print('Loading', expt_position)
+            hdf5_file_path = [hdf5_file_path for hdf5_file_path in tracking_filelist if expt_position in hdf5_file_path][0]
+            wt_cells, scr_cells, all_cells = tools.load_tracking_data(hdf5_file_path)
+            print('Loaded', expt_position)
+
+        if 'RFP' in apop_ID:
+            cell_ID = -cell_ID
+
+        focal_time = int(apop_dict[apop_ID])
+        try:
+            target_cell = [cell for cell in all_cells if cell.ID == cell_ID][0]
+        except:
+            error_message = apop_ID + ' could not find cell_ID'
+            error_log.append(error_message)
+            continue
+        if target_cell.in_frame(focal_time):
+
+            target_cell.t.index(focal_time)
+            x, y = target_cell.x[target_cell.t.index(focal_time)], target_cell.y[target_cell.t.index(focal_time)]
+            list_xy.append([x,y])
+            cell_count += 1
+        else:
+            print('Focal time not in frame!!!!!!!!!!!')
+            error_message = apop_ID + ' apoptosis time t=' +str(focal_time) + ' not in cell range ' + str(range(target_cell.t[0], target_cell.t[-1]))
+            error_log.append(error_message)
+    return list_xy, cell_count, error_log
+
 ###obselete from below?
 
 def apoptosis_list_loader(path_to_apop_list, filter_out):
