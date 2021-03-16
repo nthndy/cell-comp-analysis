@@ -72,74 +72,61 @@ def P_event(event, subject_cells, target_cell, radius, t_range, focal_time, num_
 
 
 def iterative_heatmap_generator(subject_cells, subject_event, apoptosis_time_dict, tracking_filelist, radius, t_range, num_bins, output_path):
-    from tqdm import tqdm
-
     hdf5_file_path, error_log, success_log = [], [], []
     cell_count = 0
 
     for apop_ID in tqdm(apoptosis_time_dict):
+        #try:
+        expt = 'GV' +str(re.findall(r"GV(\d+)", apop_ID)[0])
+        position = re.findall(r"Pos(\d+)", apop_ID)[0]
+
+        position = 'Pos' + position
+
+        expt_position = os.path.join(expt,position,'') ## additional '' here so that / added to end of string
+        cell_ID = int((re.findall(r"(\d+)_.FP", apop_ID))[0])
+        print("ID", apop_ID)
+
+        if expt_position not in hdf5_file_path:
+            ## load that track data
+            print('Loading', expt_position)
+            hdf5_file_path = [hdf5_file_path for hdf5_file_path in tracking_filelist if expt_position in hdf5_file_path][0]
+            wt_cells, scr_cells, all_cells = tools.load_tracking_data(hdf5_file_path)
+            print('Loaded', expt_position)
+
+        if 'RFP' in apop_ID:
+            cell_ID = -cell_ID
+
+        focal_time = int(apoptosis_time_dict[apop_ID])
         try:
-            expt = 'GV' +str(re.findall(r"GV(\d+)", apop_ID)[0])
-            position = re.findall(r"Pos(\d+)", apop_ID)[0]
-
-            position = 'Pos' + position
-
-            expt_position = os.path.join(expt,position,'') ## additional '' here so that / added to end of string
-            cell_ID = int((re.findall(r"(\d+)_.FP", apop_ID))[0])
-            print("ID", apop_ID)
-
-            if expt_position not in hdf5_file_path:
-                ## load that track data
-                print('Loading', expt_position)
-                hdf5_file_path = [hdf5_file_path for hdf5_file_path in tracking_filelist if expt_position in hdf5_file_path][0]
-                wt_cells, scr_cells, all_cells = tools.load_tracking_data(hdf5_file_path)
-                print('Loaded', expt_position)
-
-            if 'RFP' in apop_ID:
-                cell_ID = -cell_ID
-
-            focal_time = int(apop_dict[apop_ID])
-            try:
-                target_cell = [cell for cell in all_cells if cell.ID == cell_ID][0]
-            except:
-                error_message = apop_ID + ' could not find cell_ID'
-                error_log.append(error_message)
-                continue
-            if target_cell.in_frame(focal_time):
-                ## calculate according to subject cell type
-                if subject_cells == 'WT':
-                    N_cells_hist = N_cells(wt_cells, target_cell, radius, t_range, focal_time, num_bins)
-                    N_events_hist = N_events(subject_event, wt_cells, target_cell, radius, t_range, focal_time, num_bins)
-                if subject_cells == 'Scr':
-                    N_cells_hist = N_cells(scr_cells, target_cell, radius, t_range, focal_time, num_bins)
-                    N_events_hist = N_events(subject_event, scr_cells, target_cell, radius, t_range, focal_time, num_bins)
-                if subject_cells == 'All':
-                    N_cells_hist = N_cells(all_cells, target_cell, radius, t_range, focal_time, num_bins)
-                    N_events_hist = N_events(subject_event, all_cells, target_cell, radius, t_range, focal_time, num_bins)
-                # if subject_cells == 'WT':
-                #     N_cells_hist = N_cells(wt_cells, target_cell, radius, t_range, focal_time, num_bins)
-                #     N_events_hist = N_events(subject_event, wt_cells, target_cell, radius, t_range, focal_time, num_bins)
-                # if subject_cells == 'Scr':
-                #     N_cells_hist = N_cells(scr_cells, target_cell, radius, t_range, focal_time, num_bins)
-                #     N_events_hist = N_events(subject_event, scr_cells, target_cell, radius, t_range, focal_time, num_bins)
-                # if subject_cells == 'All':
-                #     N_cells_hist = N_cells(all_cells, target_cell, radius, t_range, focal_time, num_bins)
-                #     N_events_hist = N_events(subject_event, all_cells, target_cell, radius, t_range, focal_time, num_bins)
-
-                N_cells_fn = os.path.join(output_path, (apop_ID + '_N_cells'))
-                N_events_fn = os.path.join(output_path, (apop_ID + '_N_events'))
-                np.save(N_cells_fn, N_cells_hist)
-                np.save(N_events_fn, N_events_hist)
-                success_message = N_cells_fn + ' / ' + N_events_fn + ' saved out successfully'
-                success_log.append(success_message)
-                cell_count += 1
-            else:
-                print('Focal time not in frame')
-                error_message = apop_ID + ' apoptosis time t=' +str(focal_time) + ' not in cell range ' + str(range(target_cell.t[0], target_cell.t[-1]))
-                error_log.append(error_message)
+            target_cell = [cell for cell in all_cells if cell.ID == cell_ID][0]
         except:
-            error_message = apop_ID + ' something DEEP went wrong, error with input apop_ID string?'
+            error_message = apop_ID + ' could not find cell_ID'
             error_log.append(error_message)
+            continue
+        if target_cell.in_frame(focal_time):
+            ## calculate according to subject cell type
+            if subject_cells == 'WT':
+                N_cells_hist = N_cells(wt_cells, target_cell, radius, t_range, focal_time, num_bins)
+                N_events_hist = N_events(subject_event, wt_cells, target_cell, radius, t_range, focal_time, num_bins)
+            if subject_cells == 'Scr':
+                N_cells_hist = N_cells(scr_cells, target_cell, radius, t_range, focal_time, num_bins)
+                N_events_hist = N_events(subject_event, scr_cells, target_cell, radius, t_range, focal_time, num_bins)
+            if subject_cells == 'All':
+                N_cells_hist = N_cells(all_cells, target_cell, radius, t_range, focal_time, num_bins)
+                N_events_hist = N_events(subject_event, all_cells, target_cell, radius, t_range, focal_time, num_bins)
+
+            N_cells_fn = os.path.join(output_path, (apop_ID + '_N_cells'))
+            N_events_fn = os.path.join(output_path, (apop_ID + '_N_events'))
+            np.save(N_cells_fn, N_cells_hist)
+            np.save(N_events_fn, N_events_hist)
+            success_message = N_cells_fn + ' / ' + N_events_fn + ' saved out successfully'
+            success_log.append(success_message)
+            cell_count += 1
+        else:
+            print('Focal time not in frame')
+            error_message = apop_ID + ' apoptosis time t=' +str(focal_time) + ' not in cell range ' + str(range(target_cell.t[0], target_cell.t[-1]))
+            error_log.append(error_message)
+
     return cell_count, error_log, success_log
 
 ## Is the below obselete now???
@@ -171,7 +158,7 @@ def cumulative_division_counter(apoptosis_time_dict, tracking_filelist, apoptose
         if 'RFP' in apop_ID:
             cell_ID = -cell_ID
 
-        focal_time = apop_dict[apop_ID]
+        focal_time = apoptosis_time_dict[apop_ID]
         try:
             target_cell = [cell for cell in all_cells if cell.ID == cell_ID][0]
         except:
