@@ -23,7 +23,8 @@ import numpy as np
 import random
 import json
 import glob
-import os
+import os, re
+from tqdm import tqdm
 
 def load_tracking_data(tracks_path):
     import btrack
@@ -150,7 +151,7 @@ def hdf5_file_finder(hdf5_parent_folder):
 
     return hdf5_file_list
 
-def xy_position_counter(apoptosis_time_dict, tracking_filelist):
+def xy_position_counter(apoptosis_time_dict, tracking_filelist, apop_dict, num_bins):
     hdf5_file_path, error_log = [], []
     cell_count = 0
     cumulative_N_cells_hist = np.zeros((num_bins, num_bins))
@@ -168,7 +169,7 @@ def xy_position_counter(apoptosis_time_dict, tracking_filelist):
             ## load that track data
             print('Loading', expt_position)
             hdf5_file_path = [hdf5_file_path for hdf5_file_path in tracking_filelist if expt_position in hdf5_file_path][0]
-            wt_cells, scr_cells, all_cells = tools.load_tracking_data(hdf5_file_path)
+            wt_cells, scr_cells, all_cells = load_tracking_data(hdf5_file_path)
             print('Loaded', expt_position)
 
         if 'RFP' in apop_ID:
