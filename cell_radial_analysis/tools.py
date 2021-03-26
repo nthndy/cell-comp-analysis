@@ -153,7 +153,7 @@ def hdf5_file_finder(hdf5_parent_folder):
 
 def xy_position_counter(apoptosis_time_dict, tracking_filelist, apop_dict, num_bins):
     hdf5_file_path, error_log = [], []
-    cell_count = 0
+    cell_count, expt_count = 0, 0
     cumulative_N_cells_hist = np.zeros((num_bins, num_bins))
     cumulative_N_events_hist = np.zeros((num_bins, num_bins))
     list_xy = []
@@ -171,6 +171,7 @@ def xy_position_counter(apoptosis_time_dict, tracking_filelist, apop_dict, num_b
             hdf5_file_path = [hdf5_file_path for hdf5_file_path in tracking_filelist if expt_position in hdf5_file_path][0]
             wt_cells, scr_cells, all_cells = load_tracking_data(hdf5_file_path)
             print('Loaded', expt_position)
+            expt_count += 1
 
         if 'RFP' in apop_ID:
             cell_ID = -cell_ID
@@ -192,7 +193,7 @@ def xy_position_counter(apoptosis_time_dict, tracking_filelist, apop_dict, num_b
             print('Focal time not in frame!!!!!!!!!!!')
             error_message = apop_ID + ' apoptosis time t=' +str(focal_time) + ' not in cell range ' + str(range(target_cell.t[0], target_cell.t[-1]))
             error_log.append(error_message)
-    return list_xy, cell_count, error_log
+    return list_xy, cell_count, expt_count, error_log
 
 ###obselete from below?
 
