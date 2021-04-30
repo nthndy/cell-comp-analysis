@@ -27,6 +27,11 @@ import os, re
 from tqdm import tqdm
 
 def load_tracking_data(tracks_path):
+    """
+    Tracks loader takes a path and returns the ordered tracking data for two populations of cells (i.e. wild-type and scr-kd)
+    The wild-type cells will have positive integer IDs and the mutant population will have negative integer IDs
+    """
+
     import btrack
     from btrack.utils import import_HDF, import_JSON
     print("Btrack version no.:", btrack.__version__)
@@ -41,40 +46,47 @@ def load_tracking_data(tracks_path):
     print("Track information loaded and ordered according to cell type (WT IDs >0> Scr IDs)")
     return wt_cells, scr_cells, all_cells
 
-def select_target_cell(cell_type, cell_ID, all_cells):
+def select_target_cell(cell_ID, all_cells, cell_type = 'Scr'):
+    """
+    Select target cell takes a cell ID and variable containing a population of loaded cells from previous function and returns the corresponding mutant cell by default, or the wild-type if specified.
+    """
     if cell_type == 'Scr':
         if int(cell_ID) > 0:
             cell_ID = -int(cell_ID)
-        target_cell = [scr_track for scr_track in all_cells if scr_track.ID == cell_ID][0]
-        ### if a scr cell is picked, the focal timepoint is its apoptosis
-        try: ## try to find apoptosis time ## replace with chris' definitive definitions of apoptosis?
-            if target_cell.label[0] == 'APOPTOSIS': ## if the first classification is apoptosis then thats a duff track
-                print("False apoptosis (first classification is apoptosis) Scr ID:", target_cell.ID)
-                focal_index = focal_time = False
-            else:
-                for i, j in enumerate(target_cell.label):
-                    if j == 'APOPTOSIS' and target_cell.label[i+1] == 'APOPTOSIS' and target_cell.label[i+2] == 'APOPTOSIS': # and target_cell.label[i+3] =='APOPTOSIS' and target_cell.label[i+4] =='APOPTOSIS':
-                        focal_index = i
-                        break
-                focal_time = target_cell.t[focal_index]
-        except:
-            print("False apoptosis (could not find t-apoptosis) Scr ID:", target_cell.ID)
-            focal_index = focal_time = False
+        target_cell = [track for track in all_cells if track.ID == cell_ID][0]
     elif cell_type == 'WT':
-        cell_ID = int(cell_ID)
-        import random
-        target_cell = [wt_track for wt_track in all_cells if wt_track.ID == cell_ID][0]
-        ### if a wt cell is picked, the focal time point is a random point in its track as this measurement will serve as a control
-        focal_time = random.choice(target_cell.t)
-        focal_index = target_cell.t.index(focal_time)
-    else:
-        raise Exception("Cell type not recognised, enter either 'WT' or 'Scr'")
-    #if focal_time == False:
-        #raise Exception("False apoptosis Scr ID it gone done messed up:", target_cell.ID)
+        target_cell = [track for track in all_cells if track.ID == cell_ID][0]
+    return target_cell
 
-    return target_cell, focal_time
+def apoptosis_time(target_cell):
+    """
+    This function will try and find an apoptosis (defined as three sequential apoptosis classifications from the btrack information) time point.
+    """
+    try: ## try to find apoptosis time ## replace with chris' definitive definitions of apoptosis?
+        if target_cell.label[0] == 'APOPTOSIS': ## if the first classification is apoptosis then thats a duff track
+            print("False apoptosis (first classification is apoptosis) Scr ID:", target_cell.ID)
+            focal_index = focal_time = False
+        else:
+            for i, j in enumerate(target_cell.label):
+                if j == 'APOPTOSIS' and target_cell.label[i+1] == 'APOPTOSIS' and target_cell.label[i+2] == 'APOPTOSIS': # and target_cell.label[i+3] =='APOPTOSIS' and target_cell.label[i+4] =='APOPTOSIS':
+                    focal_index = i
+                    break
+            focal_time = target_cell.t[focal_index]
+    except:
+        raise Exception("Could not find apoptosis time, try manual dictionary of apoptosis IDs")
+    return focal_time
+
+def random_time(target_cell):
+    """
+    This will return a random time point in the target cells existence, useful for generating control plots in the latter analysis.
+    """
+    focal_time = random.choice(target_cell.t)
+    return focal_time
 
 def euc_dist(target_cell, other_cell, frame, focal_time):
+    """
+    An important function that calculates the distance between two cells at a given frame in the timelapse microscope movie. If the cell has gone through an apoptosis, it's location will be returned as the apoptosis location. If the cell does not exist at that frame then a `np.inf` distance will be returned.
+    """
     try:
         if frame > target_cell.t[-1]: ## if the frame of the scan is beyond the final frame of the apoptotic cell then use the apoptosis location (ie if the cell has died then fix the scan location at the apoptotic frame location)
             idx0 = target_cell.t.index(focal_time) ## could also do just ## apop_index
@@ -90,6 +102,9 @@ def euc_dist(target_cell, other_cell, frame, focal_time):
     return np.sqrt(dx**2 + dy**2)
 
 def cell_counter(subject_cells, target_cell, radius, t_range, focal_time):
+    """
+    Takes a population of subject cells and a single target cell and counts the spatial and temporal distance between each subject cell and the target cell over a specified radius and time range centered around a focal time.
+    """
     ## subject should equal wt_cells, scr_cells or all_cells
     focal_index = target_cell.t.index(focal_time)
     cells = [tuple(((cell.ID),
@@ -103,11 +118,10 @@ def cell_counter(subject_cells, target_cell, radius, t_range, focal_time):
 
 def event_counter(event, subject_cells, target_cell, radius, t_range, focal_time):
     focal_index = target_cell.t.index(focal_time)
+    event = event.upper()
     ### the issue here is that it assumes mitosis time is the last time frame in a track (accurate) which does not work with apoptosis
     if event == 'APOPTOSIS':
-        return print("Need to configure apoptosis counter, as current apoptosis timepoints are inaccurate")
-    else:
-    ## subject should equal wt_cells, scr_cells or all_cells
+        print("Current apoptosis timepoints are inaccurate so proceed with this analysis with caution")
         events = [tuple(((cell.ID),
                           (round((euc_dist(target_cell, cell, cell.t[-1], focal_time)),2)),
                           ((cell.t[-1]))))
@@ -117,163 +131,15 @@ def event_counter(event, subject_cells, target_cell, radius, t_range, focal_time
                                   cell.fate.name == event
                            ]
         return events
-
-### labels in SI
-def kymo_labels(num_bins, label_freq, radius, t_range, SI):
-    label_freq =1
-    radial_bin = radius / num_bins
-    temporal_bin = t_range / num_bins
-
-    if SI == True:
-        time_scale_factor = 4/60 ## each frame is 4 minutes
-        distance_scale_factor = 1/3 ## each pixel is 0.3recur micrometers
+    elif event == 'DIVIDE':
+        events = [tuple(((cell.ID),
+                          (round((euc_dist(target_cell, cell, cell.t[-1], focal_time)),2)),
+                          ((cell.t[-1]))))
+                           for cell in subject_cells
+                               if euc_dist(target_cell, cell, cell.t[-1], focal_time)<radius and
+                                  cell.t[-1] in range(focal_time-int(t_range/2), focal_time+ int(t_range/2)) and
+                                  cell.fate.name == event
+                           ]
+        return events
     else:
-        time_scale_factor, distance_scale_factor = 1,1
-
-    ### generate labels for axis micrometers/hours
-    xlocs = range(0, num_bins,label_freq) ## step of 2 to avoid crowding
-    xlabels = []
-    for m in range(int(-num_bins/2), int(num_bins/2),label_freq):
-        xlabels.append(str(int(((temporal_bin)*m)*time_scale_factor)) + "," + str(int(((temporal_bin)*m+temporal_bin)*time_scale_factor)))
-    ylocs = range(0, num_bins, label_freq) ## step of 2 to avoid crowding
-    ylabels = []
-    for m in range(num_bins, 0, -label_freq):
-        ylabels.append(str(int(((radial_bin)*m)*distance_scale_factor)) + "," + str(int(((radial_bin)*(m-1)*distance_scale_factor))))
-
-    return xlocs, xlabels, ylocs, ylabels
-
-
-### loading chris apoptosis information
-
-def hdf5_file_finder(hdf5_parent_folder):
-    ### load my list of hdf5 files from a typical directory tree with different experiments
-    aligned_hdf5_file_list = glob.glob(os.path.join(hdf5_parent_folder, 'GV****/Pos*/*aligned/HDF/segmented.hdf5'))
-    unaligned_hdf5_file_list = glob.glob(os.path.join(hdf5_parent_folder, 'GV****/Pos*/HDF/segmented.hdf5'))
-    hdf5_file_list = aligned_hdf5_file_list + unaligned_hdf5_file_list
-
-    return hdf5_file_list
-
-def xy_position_counter(apoptosis_time_dict, tracking_filelist, apop_dict, num_bins):
-    hdf5_file_path, error_log = [], []
-    cell_count, expt_count = 0, 0
-    cumulative_N_cells_hist = np.zeros((num_bins, num_bins))
-    cumulative_N_events_hist = np.zeros((num_bins, num_bins))
-    list_xy = []
-    for apop_ID in tqdm(apoptosis_time_dict):
-        expt = 'GV' +str(re.findall(r"GV(\d+)", apop_ID)[0])
-        position = re.findall(r"Pos(\d+)", apop_ID)[0]
-        position = 'Pos' + position
-        expt_position = os.path.join(expt,position,'') ## additional '' here so that / added to end of string
-        cell_ID = int((re.findall(r"(\d+)_.FP", apop_ID))[0])
-        print("ID", apop_ID)
-
-        if expt_position not in hdf5_file_path:
-            ## load that track data
-            print('Loading', expt_position)
-            hdf5_file_path = [hdf5_file_path for hdf5_file_path in tracking_filelist if expt_position in hdf5_file_path][0]
-            wt_cells, scr_cells, all_cells = load_tracking_data(hdf5_file_path)
-            print('Loaded', expt_position)
-            expt_count += 1
-
-        if 'RFP' in apop_ID:
-            cell_ID = -cell_ID
-
-        focal_time = int(apop_dict[apop_ID])
-        try:
-            target_cell = [cell for cell in all_cells if cell.ID == cell_ID][0]
-        except:
-            error_message = apop_ID + ' could not find cell_ID'
-            error_log.append(error_message)
-            continue
-        if target_cell.in_frame(focal_time):
-
-            target_cell.t.index(focal_time)
-            x, y = target_cell.x[target_cell.t.index(focal_time)], target_cell.y[target_cell.t.index(focal_time)]
-            list_xy.append([x,y])
-            cell_count += 1
-        else:
-            print('Focal time not in frame!!!!!!!!!!!')
-            error_message = apop_ID + ' apoptosis time t=' +str(focal_time) + ' not in cell range ' + str(range(target_cell.t[0], target_cell.t[-1]))
-            error_log.append(error_message)
-    return list_xy, cell_count, expt_count, error_log
-
-def apoptosis_list_loader(path_to_apop_lists, cell_type):
-    expts_apop_lists = os.listdir(path_to_apop_lists)
-    apop_dict = {}
-    N_apops = len(expts_apop_lists)
-    for expt_apop_list in expts_apop_lists:
-        apop_list = open(os.path.join(path_to_apop_lists, expt_apop_list), 'r')
-        for apop_ID in apop_list:
-            if cell_type in apop_ID:
-                if 'stitched' not in apop_ID: ## relic of apoptosis finding (stitched = tracks that apoptosis switches into post apop)
-                    apop_dict[apop_ID.split()[0]] = apop_ID.split()[1]
-    return apop_dict
-
-###obselete from below?
-
-def apoptosis_list_loader2(path_to_apop_list, filter_out):
-     ## loads a chris style JSON file with apop_ID and apop_index (from glimpse)
-    ## filter option excludes GFP apoptoses and any apoptoses where glimpse does not match associated metadata
-    ## assumes metadata stored in dir next to JSON called 'All_Apop_Npzs'
-
-    with open(path_to_apop_list) as file:
-        apop_dict = json.load(file)
-
-    if filter_out != '':
-        ## filter out GFP or whatever str is in filter_out
-        for i in [i for i in apop_dict if filter_out in i]: # iterating over list with 'GFP' in apop_ID
-            del apop_dict[i]
-
-    return apop_dict
-
-def old_apoptosis_list_loader(path_to_apop_list, filter_out):
-    ## loads a chris style JSON file with apop_ID and apop_index (from glimpse)
-    ## filter option excludes GFP apoptoses and any apoptoses where glimpse does not match associated metadata
-    ## assumes metadata stored in dir next to JSON called 'All_Apop_Npzs'
-
-    with open(path_to_apop_list) as file:
-        apop_dict = json.load(file)
-
-    if filter_out != '':
-        ## filter out GFP or whatever str is in filter_out
-        for i in [i for i in apop_dict if filter_out in i]: # iterating over list with 'GFP' in apop_ID
-            del apop_dict[i]
-
-    ## filter out (delete dict entry) if glimpse does not match its metadata
-    ## metadata in the form of npz files stored in 'All_Apop_Npzs' dir in path_to_apop_list
-    apop_npz_path = os.path.join(os.path.split(path_to_apop_list)[0], 'All_Apop_Npzs')
-    apop_npz_list = glob.glob(os.path.join(apop_npz_path,'*.npz'))
-    corrupt_metadata_list = []
-    for apop_ID in apop_dict:
-        path_to_npz = [path_to_npz for path_to_npz in apop_npz_list if apop_ID.split('FP')[0] in path_to_npz] ## this pulls the npz path from a list of npz paths by matching the apop_ID str prior to final label (ie fake/long_apop) as some of the final labels arent reflected in npz fn
-        if len(path_to_npz) == 0: ## no metadata found
-            corrupt_metadata_list.append(apop_ID)
-            continue
-        with np.load(path_to_npz[0]) as npz:
-            t = npz['t']
-            glimpse_enc = npz['glimpse_encoding'][0]
-        if len(glimpse_enc) > len(t): ## if the glimpse encoding is longer than the time metadata then the two do not match and i cannot find the true apoptosis time of that apop_ID
-            #print(apop_ID, ' metadata does not match glimpse, apoptosis time cannot be found')
-            corrupt_metadata_list.append(apop_ID)
-    for i in corrupt_metadata_list:
-        if i in apop_dict:
-            del apop_dict[i]
-
-    return apop_dict
-
-### out to be used in conjuction with previous funcs
-def apop_time_realign(apop_dict, path_to_metadata):
-    ### Chris' apop list gives time of apoptosis relative to start of glimpse
-    ### This function reads metadata of glimpse and finds t0 for glimpse
-    ### true_apop_time = t0(glimpse) + glimpse apop_time
-    true_apop_dict = {}
-    apop_npz_list = glob.glob(os.path.join(path_to_metadata,'*.npz'))
-    for apop_ID in apop_dict:
-        path_to_npz = [path_to_npz for path_to_npz in apop_npz_list if apop_ID.split('FP')[0] in path_to_npz][0] ## this pulls the npz path from a list of npz paths by matching the apop_ID str prior to final label (ie fake/long_apop) as some of the final labels arent reflected in npz fn
-        with np.load(path_to_npz) as npz:
-            t = npz['t']
-            ID = npz['ID']
-        true_apop_time = int(t[0]) + apop_dict[apop_ID]
-        true_apop_dict[apop_ID] = true_apop_time
-
-    return true_apop_dict
+        return print('Event type not recognised, please try again with either "apoptosis" or "divide"')
