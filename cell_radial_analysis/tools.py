@@ -75,15 +75,17 @@ def select_target_cell(cell_type, cell_ID, all_cells):
     return target_cell, focal_time
 
 def euc_dist(target_cell, other_cell, frame, focal_time):
-    focal_index = target_cell.t.index(focal_time)
-    try:
-        idx0 = focal_index #target_cell.t.index(apop_time) ## could also do just ## apop_index
-        idx1 = other_cell.t.index(frame) ## t.index provides the index of that frame
-    except:
-        return np.inf
+        try:
+            if frame > target_cell.t[-1]: ## if the frame of the scan is beyond the final frame of the apoptotic cell then use the apoptosis location (ie if the cell has died then fix the scan location at the apoptotic frame location)
+                idx0 = target_cell.t.index(focal_time) ## could also do just ## apop_index
+            else:
+                idx0 = target_cell.t.index(frame)
+            idx1 = other_cell.t.index(frame) ## t.index provides the index of that frame
+        except:
+            return np.inf ## if the other_cell does not exist for frame then returns the euc dist as np.inf
 
-    dx = target_cell.x[idx0] - other_cell.x[idx1]
-    dy = target_cell.y[idx0] - other_cell.y[idx1]
+        dx = target_cell.x[idx0] - other_cell.x[idx1]
+        dy = target_cell.y[idx0] - other_cell.y[idx1]
 
     return np.sqrt(dx**2 + dy**2)
 
@@ -195,9 +197,21 @@ def xy_position_counter(apoptosis_time_dict, tracking_filelist, apop_dict, num_b
             error_log.append(error_message)
     return list_xy, cell_count, expt_count, error_log
 
+def apoptosis_list_loader(path_to_apop_lists, cell_type):
+    expts_apop_lists = os.listdir(path_to_apop_lists)
+    apop_dict = {}
+    N_apops = len(expts_apop_lists)
+    for expt_apop_list in expts_apop_lists:
+        apop_list = open(os.path.join(path_to_apop_lists, expt_apop_list), 'r')
+        for apop_ID in apop_list:
+            if cell_type in apop_ID:
+                if 'stitched' not in apop_ID: ## relic of apoptosis finding (stitched = tracks that apoptosis switches into post apop)
+                    apop_dict[apop_ID.split()[0]] = apop_ID.split()[1]
+    return apop_dict
+
 ###obselete from below?
 
-def apoptosis_list_loader(path_to_apop_list, filter_out):
+def apoptosis_list_loader2(path_to_apop_list, filter_out):
      ## loads a chris style JSON file with apop_ID and apop_index (from glimpse)
     ## filter option excludes GFP apoptoses and any apoptoses where glimpse does not match associated metadata
     ## assumes metadata stored in dir next to JSON called 'All_Apop_Npzs'
