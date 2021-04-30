@@ -75,17 +75,17 @@ def select_target_cell(cell_type, cell_ID, all_cells):
     return target_cell, focal_time
 
 def euc_dist(target_cell, other_cell, frame, focal_time):
-        try:
-            if frame > target_cell.t[-1]: ## if the frame of the scan is beyond the final frame of the apoptotic cell then use the apoptosis location (ie if the cell has died then fix the scan location at the apoptotic frame location)
-                idx0 = target_cell.t.index(focal_time) ## could also do just ## apop_index
-            else:
-                idx0 = target_cell.t.index(frame)
-            idx1 = other_cell.t.index(frame) ## t.index provides the index of that frame
-        except:
-            return np.inf ## if the other_cell does not exist for frame then returns the euc dist as np.inf
+    try:
+        if frame > target_cell.t[-1]: ## if the frame of the scan is beyond the final frame of the apoptotic cell then use the apoptosis location (ie if the cell has died then fix the scan location at the apoptotic frame location)
+            idx0 = target_cell.t.index(focal_time) ## could also do just ## apop_index
+        else:
+            idx0 = target_cell.t.index(frame)
+        idx1 = other_cell.t.index(frame) ## t.index provides the index of that frame
+    except:
+        return np.inf ## if the other_cell does not exist for frame then returns the euc dist as np.inf
 
-        dx = target_cell.x[idx0] - other_cell.x[idx1]
-        dy = target_cell.y[idx0] - other_cell.y[idx1]
+    dx = target_cell.x[idx0] - other_cell.x[idx1]
+    dy = target_cell.y[idx0] - other_cell.y[idx1]
 
     return np.sqrt(dx**2 + dy**2)
 
