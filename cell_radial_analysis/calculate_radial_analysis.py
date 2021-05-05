@@ -21,6 +21,7 @@ __email__ = "day.nathan@pm.me"
 
 import numpy as np
 import tools
+import dataio
 import re, os
 from tqdm import tqdm
 
@@ -90,7 +91,7 @@ def iterative_heatmap_generator(subject_cells, subject_event, apoptosis_time_dic
             ## load that track data
             print('Loading', expt_position)
             hdf5_file_path = [hdf5_file_path for hdf5_file_path in tracking_filelist if expt_position in hdf5_file_path][0]
-            wt_cells, scr_cells, all_cells = tools.load_tracking_data(hdf5_file_path)
+            wt_cells, scr_cells, all_cells = dataio.load_tracking_data(hdf5_file_path)
             print('Loaded', expt_position)
 
         if 'RFP' in apop_ID:
@@ -148,7 +149,7 @@ def iterative_control_heatmap_generator(subject_cells, subject_event, expt_dict,
             ## load that track data
             print('Loading', expt_position)
             hdf5_file_path = [hdf5_file_path for hdf5_file_path in tracking_filelist if expt_position in hdf5_file_path][0]
-            wt_cells, scr_cells, all_cells = tools.load_tracking_data(hdf5_file_path)
+            wt_cells, scr_cells, all_cells = dataio.load_tracking_data(hdf5_file_path)
             print('Loaded', expt_position)
 
         for i in range(N_cells_per_expt):
@@ -213,7 +214,7 @@ def cumulative_division_counter(apoptosis_time_dict, tracking_filelist, apoptose
             ## load that track data
             print('Loading', expt_position)
             hdf5_file_path = [hdf5_file_path for hdf5_file_path in tracking_filelist if expt_position in hdf5_file_path][0]
-            wt_cells, scr_cells, all_cells = tools.load_tracking_data(hdf5_file_path)
+            wt_cells, scr_cells, all_cells = dataio.load_tracking_data(hdf5_file_path)
             print('Loaded', expt_position)
 
         ## get truest cell_ID from npz file along with time to realign chris' apop time
