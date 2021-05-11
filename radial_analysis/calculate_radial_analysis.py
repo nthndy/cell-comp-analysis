@@ -130,7 +130,7 @@ def iterative_heatmap_generator(subject_cells, subject_event, apoptosis_time_dic
 
     return cell_count, error_log, success_log
 
-def iterative_control_heatmap_generator(subject_cells, subject_event, expt_dict, N_cells_per_expt, tracking_filelist, radius, t_range, num_bins, output_path):
+def iterative_control_heatmap_generator(focal_cells, subject_cells, subject_event, expt_dict, N_cells_per_expt, tracking_filelist, radius, t_range, num_bins, output_path):
     import random
 
     hdf5_file_path, error_log, success_log = [], [], []
@@ -148,20 +148,26 @@ def iterative_control_heatmap_generator(subject_cells, subject_event, expt_dict,
         if expt_position not in hdf5_file_path:
             ## load that track data
             print('Loading', expt_position)
-            hdf5_file_path = [hdf5_file_path for hdf5_file_path in tracking_filelist if expt_position in hdf5_file_path][0]
-            wt_cells, scr_cells, all_cells = dataio.load_tracking_data(hdf5_file_path)
-            print('Loaded', expt_position)
+            try:
+                hdf5_file_path = [hdf5_file_path for hdf5_file_path in tracking_filelist if expt_position in hdf5_file_path][0]
+                wt_cells, scr_cells, all_cells = dataio.load_tracking_data(hdf5_file_path)
+                print('Loaded', expt_position)
+            except:
+                print(expt_position, "Failed to load HDF5")
+                error_message = expt_position + ' could not load HDF5'
+                error_log.append(error_message)
+                continue
 
         for i in range(N_cells_per_expt):
             try:
                 ## load quasi random cell ID (want to pick a cell that has a long track... or )
-                if subject_cells == 'WT':
+                if focal_cells == 'WT':
                     cells = [cell for cell in wt_cells if len(cell) > 100] ## >100 eliminates possibility of being false track
                     target_cell = random.choice(cells)
-                if subject_cells == 'Scr':
+                if focal_cells == 'Scr':
                     cells = [cell for cell in scr_cells if len(cell) > 100] ## >100 eliminates possibility of being false track
                     target_cell = random.choice(cells)
-                if subject_cells == 'All':
+                if focal_cells == 'All':
                     cells = [cell for cell in all_cells if len(cell) > 100] ## >100 eliminates possibility of being false track
                     target_cell = random.choice(cells)
 

@@ -26,19 +26,24 @@ import os
 from pathlib import Path
 import time
 
-def auto_plot_cumulative(input_2d_hist, input_type, N, num_bins, radius, t_range, focal_cell, focal_event, subject_cell, subject_event, save_parent_dir, SI):
+def auto_plot_cumulative(input_2d_hist, input_type, N, num_bins, radius, t_range, focal_cell, focal_event, subject_cell, subject_event, save_parent_dir, cbar_lim, SI):
 
         xlocs, xlabels, ylocs, ylabels = kymo_labels(num_bins, 1, radius, t_range, SI)
 
         ## formatting cell and event names
-        focal_event_name = 'apoptoses' if focal_event == 'APOPTOSIS' else 'divisions'
-        focal_cell_name = 'wild-type' if focal_cell == 'WT' else 'Scribble'
-        subj_event_name = 'apoptoses' if focal_event == 'APOPTOSIS' else 'divisions'
-        subj_cell_name = 'wild-type' if subject_cell == 'WT' else 'Scribble'
+        focal_event_name = 'apoptoses' if 'apop' in focal_event.lower() else 'divisions' #focal_event == 'APOPTOSIS' or 'apop' else 'divisions'
+        focal_cell_name = 'wild-type' if 'wt' in focal_cell.lower() else 'Scribble'
+        subj_event_name = 'apoptoses' if 'apop' in subject_event.lower() else 'divisions'
+        subj_cell_name = 'wild-type' if 'wt' in subject_cell.lower() else 'Scribble'
+
+        if focal_event == 'control':
+            focal_event_name = 'random time points'
+
+        title = 'Spatiotemporal dist. of probability of {} {} \n around {} {} (N={})'.format(subj_cell_name, subj_event_name, focal_cell_name, focal_event_name, N)
 
         ## output save path formatting
         save_dir_name = '{}_{}_{}_{}'.format(focal_cell.lower(), focal_event.lower()[0:3] if focal_event == 'DIVISION' else focal_event.lower()[0:4], subject_cell.lower(), subject_event.lower()[0:3] if subject_event == 'DIVISION' else subject_event.lower()[0:4])
-        save_dir = '{},{}/{}'.format(radius,num_bins,save_dir_name)
+        save_dir = '{}.{}.{}/{}'.format(radius,t_range,num_bins,save_dir_name)
         save_path = os.path.join(save_parent_dir,save_dir)
         Path(save_path).mkdir(parents=True, exist_ok=True)
 
@@ -70,11 +75,16 @@ def auto_plot_cumulative(input_2d_hist, input_type, N, num_bins, radius, t_range
 
         final_hist = np.flipud(input_2d_hist)  ## flip for desired graph orientation
         plt.imshow(final_hist)
-        plt.colorbar(label = cb_label)
+
+        if cbar_lim == '':
+            plt.colorbar(label = cb_label)
+        else:
+            plt.clim(vmin=cbar_lim[0], vmax=cbar_lim[1])
+            plt.colorbar(label = cb_label)
 
         ## apop location marker
         plt.scatter(num_bins/2-0.5, num_bins-0.75, s=20, c='white', marker='v')
-        plt.text(num_bins+0.5, num_bins+3, 'Apoptosis location \nshown by inverted \nwhite triangle')
+        plt.text(num_bins+0.15, num_bins+1.5, 'Apoptosis location \nshown by inverted \nwhite triangle')
 
         fn = os.path.join(save_path,title+'.pdf')
 
