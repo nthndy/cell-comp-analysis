@@ -1,3 +1,8 @@
 */.ipynb_checkpoints/*
 */*-Copy*
 */*/.ipynb_checkpoints/*
+*/__pycache__/*
+~/analysis/cell-comp-analysis/*/__pycache__/*.pyc
+*.pyc
+~/analysis/cell-comp-analysis/*/*/__pycache__/*.pyc
+~/analysis/cell-comp-analysis/radial_analysis/__pycache__/*.pyc
