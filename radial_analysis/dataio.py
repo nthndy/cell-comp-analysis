@@ -25,6 +25,9 @@ import json
 import glob
 import os, re
 from tqdm import tqdm
+import btrack
+from btrack.utils import import_HDF, import_JSON, tracks_to_napari
+
 
 def load_tracking_data(tracks_path):
     """
@@ -121,3 +124,69 @@ def xy_position_counter(apoptosis_time_dict, tracking_filelist, apop_dict, num_b
             error_message = apop_ID + ' apoptosis time t=' +str(focal_time) + ' not in cell range ' + str(range(target_cell.t[0], target_cell.t[-1]))
             error_log.append(error_message)
     return list_xy, cell_count, expt_count, error_log
+
+
+def load_and_align_tracks(tracks_path, image_stack):
+    """
+    This takes the path to a tracking file and loads the tracks, realigning them to be displayed over image_stack, which must also be provided so that the shape can be assessed
+    """
+
+    global wt_tracks, scr_tracks, shift_y, shift_x
+
+    with btrack.dataio.HDF5FileHandler(tracks_path, 'r', obj_type = "obj_type_1") as hdf:
+        wt_tracks = hdf.tracks
+    with btrack.dataio.HDF5FileHandler(tracks_path, 'r', obj_type = "obj_type_2") as hdf:
+        scr_tracks = hdf.tracks
+
+    ## this method casues problems as the viewer for tracks doesnt like negative numbers
+    #wt_tracks, scr_tracks, all_tracks = tools.load_tracking_data(tracks_path)
+
+    print("Tracks loaded")
+
+    ### finding coord range of aligned images, coords switched already ## need to sort out the order of try excepts
+    try:
+        align_x_range, align_y_range = image_stack.shape[2], image_stack.shape[1]
+    except:
+        print("Error: no image data loaded to map tracks to")
+        return
+
+
+    ### finding maximum extent of tracking coords
+    tracks_x_range = round(max([max(track.x) for track in wt_tracks]))
+    tracks_y_range = round(max([max(track.y) for track in wt_tracks])) + 2 ## sort this hack out later
+
+    ### coord switch
+    tmp = tracks_y_range
+    tracks_y_range = tracks_x_range
+    tracks_x_range = tmp
+
+    print("tracks range:", (tracks_x_range), (tracks_y_range))
+    print("aligned image range:", (align_x_range), (align_y_range))
+
+    shift_x = int((align_x_range - tracks_x_range)/2)
+    shift_y = int((align_y_range - tracks_y_range)/2)
+
+    print("shift in x and y:", shift_x, shift_y)
+
+    global wt_data, scr_data, properties, graph
+
+    wt_data, properties, graph = tracks_to_napari(wt_tracks, ndim = 2)
+    scr_data, properties, graph = tracks_to_napari(scr_tracks, ndim = 2)
+
+    tmp = wt_data[:,2].copy() ## copy the true_y coord
+    wt_data[:,2] = wt_data[:,3]  ##assign the old_y coord as the true_x
+    wt_data[:,3] = tmp ## assign the old_x as true_y
+
+    wt_data[:,2] += shift_y ## TRUE_Y (vertical axis)
+    wt_data[:,3] += shift_x ## TRUE_X (horizontal axis)
+
+    tmp = scr_data[:,2].copy()
+    scr_data[:,2] = scr_data[:,3]
+    scr_data[:,3] = tmp
+
+    scr_data[:,2] += shift_y ## TRUE_Y (vertical axis)
+    scr_data[:,3] += shift_x ## TRUE_X (horizontal axis)
+
+    print("coordinate shift applied")
+
+    return wt_tracks, scr_tracks, wt_data, scr_data, shift_x, shift_y

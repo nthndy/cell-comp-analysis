@@ -26,6 +26,23 @@ import os
 from pathlib import Path
 import time
 
+import napari
+import btrack
+import numpy as np
+from skimage.io import imread
+import os
+from btrack.utils import import_HDF, import_JSON, tracks_to_napari
+from tqdm.notebook import tnrange, tqdm
+import matplotlib.pyplot as plt
+import tools
+from datetime import datetime
+
+"""
+Graph rendering below
+
+This section takes the final output of my radial analysis and renders the relevant graphs and labels
+"""
+
 def auto_plot_cumulative(input_2d_hist, input_type, N, num_bins, radius, t_range, focal_cell, focal_event, subject_cell, subject_event, save_parent_dir, cbar_lim, SI):
 
         xlocs, xlabels, ylocs, ylabels = kymo_labels(num_bins, 1, radius, t_range, SI)
@@ -260,3 +277,240 @@ def kymo_labels(num_bins, label_freq, radius, t_range, SI):
         ylabels.append(str(int(((radial_bin)*m)*distance_scale_factor)) + "," + str(int(((radial_bin)*(m-1)*distance_scale_factor))))
 
     return xlocs, xlabels, ylocs, ylabels
+
+"""
+Raw data viewer rendering WIP below, needs work as doesnt recognise `viewer` atm
+
+This module contains functions to assist in the rendering and display of data from my radial analysis of cell competition
+"""
+
+def find_apoptosis_time(target_track, index): ### if index is set to True then the index of the apoptotic time (wrt target_track) is returned
+    """
+    This takes a target track and finds the apoptosis time, returning it as an absolute time if index == False, or a time relative to cell life (index) if index == True
+    """
+    for i, j in enumerate(target_track.label):
+        if j == 'APOPTOSIS' and target_track.label[i+1] == 'APOPTOSIS' and target_track.label[i+2] == 'APOPTOSIS': # and target_track.label[i+3] =='APOPTOSIS' and target_track.label[i+4] =='APOPTOSIS':
+            apop_index = i
+            break
+    apop_time = target_track.t[apop_index]
+    if index == True:
+        return apop_index
+    else:
+        return apop_time
+
+def find_nearby_wt_mitosis(target_track, delta_t, radius):
+    """
+    This takes a target track and finds the nearby wild type mitoses, returning both the wild-type tracks and mitoses in specified radius and delta_t time window
+    """
+    frame = find_apoptosis_time(target_track, index = False) + delta_t
+    dividing_states = ('METAPHASE',) #('PROMETAPHASE', 'METAPHASE', 'DIVIDE')
+    wt_tracks_in_radius = [wt_track for wt_track in wt_tracks if wt_track.in_frame(frame) if euclidean_distance(target_track, wt_track, frame)<radius]
+    wt_mitosis_in_radius = [wt_track for wt_track in wt_tracks if wt_track.in_frame(frame) if euclidean_distance(target_track, wt_track, frame)<radius if wt_track.label[wt_track.t.index(frame)] in dividing_states if wt_track.fate.name == "DIVIDE"] ###check this
+
+    return wt_tracks_in_radius, wt_mitosis_in_radius
+
+
+def plot_mitoses(cell_type, cell_ID, radius, delta_t): ## this function plots mitosis events into the napari viewer
+    """
+    This function takes a cell_type, a focal cell ID, a spatial radius and a time window and finds all the mitotic cells belonging to cell type within the radius and time window, plotting them as points in napari.
+    """
+    if cell_type.lower() == 'scr':
+        target_track = [track for track in scr_tracks if track.ID == cell_ID][0]
+    else:
+        target_track = [track for track in wt_tracks if track.ID == cell_ID][0]
+    apop_time, apop_index = find_apoptosis_time(target_track, index = False), find_apoptosis_time(target_track, index = True)
+    apop_event = target_track.t[apop_index], target_track.x[apop_index]+shift_y, target_track.y[apop_index]+shift_x ## with transposed shift
+    wt_tracks_in_radius, wt_mitosis_in_radius = find_nearby_wt_mitosis(target_track, delta_t, radius)
+    t_m, x_m, y_m = np.zeros(len(wt_mitosis_in_radius)), np.zeros(len(wt_mitosis_in_radius)), np.zeros(len(wt_mitosis_in_radius))
+    mito_events = np.zeros((len(wt_mitosis_in_radius), 3)) ## 3 because of the 3 cartesian coords
+    for i, wt_mitosis in enumerate(wt_mitosis_in_radius): ## this now assumes that the mitosis time point of relevance isnt the last frame of track but the time at delta_t, need to bolster definition of mitosis
+        mito_index = [j for j, k in enumerate(wt_mitosis.t) if k == apop_event[0]+delta_t][0] ### [0] bc first item of list comprehension
+        t_m[i], x_m[i], y_m[i] = wt_mitosis.t[mito_index], wt_mitosis.x[mito_index]+shift_y, wt_mitosis.y[mito_index]+shift_x ## plus transposed coordinate shift
+        mito_events[i] = t_m[i], x_m[i], y_m[i]
+    return viewer.add_points(mito_events, name = "Mitosis events", symbol = "cross", face_color = 'pink')
+
+def plot_target_track(cell_type, cell_ID):
+    """
+    This takes a cell_type and target cell ID and plots it as a point in napari
+    """
+    if cell_type.lower() == 'scr':
+        target_track = [track for track in scr_tracks if track.ID == cell_ID][0]
+    else:
+        target_track = [track for track in wt_tracks if track.ID == cell_ID][0]
+    target_track_loc = [(target_track.t[i], target_track.x[i]+shift_y, target_track.y[i]+shift_x) for i in range(len(target_track.t))]
+    return viewer.add_points(target_track_loc, name = "Track of interest", size = 40, symbol = 'o', face_color = "transparent", edge_color = 'cyan', edge_width = 2)
+
+def plot_stationary_apoptosis_point(cell_type, cell_ID): ## this function plots apoptotic event and surrounding local environment scope (determined by radius)
+    """
+    This takes a cell type and cell ID and plots the apoptosis point at the time of apoptosis only
+    """
+    if cell_type.lower() == 'scr':
+        target_track = [track for track in scr_tracks if track.ID == cell_ID][0]
+    else:
+        target_track = [track for track in wt_tracks if track.ID == cell_ID][0]
+    apop_time, apop_index = find_apoptosis_time(target_track, index = False), find_apoptosis_time(target_track, index = True)
+    apop_event = [(t, target_track.x[apop_index]+shift_y, target_track.y[apop_index]+shift_x) for t in range(len(gfp))] ## marker for apoptosis over all frames
+    return viewer.add_points(apop_event, name = "Stastionary apoptosis point", size = 40, symbol = 'o', face_color = "transparent", edge_color = 'cyan', edge_width = 2)
+
+def plot_stationary_apop_radius(cell_type, cell_ID, radius, delta_t, inner_radius):
+    """
+    This takes a cell type and cell ID and plots the apoptosis with a radius and optional inner ring at the time specified as delta_t either side of apop time
+    """
+    if cell_type.lower() == 'scr':
+        target_track = [track for track in scr_tracks if track.ID == cell_ID][0]
+    else:
+        target_track = [track for track in wt_tracks if track.ID == cell_ID][0]
+    apop_time, apop_index = find_apoptosis_time(target_track, index = False), find_apoptosis_time(target_track, index = True)
+    apop_event = target_track.t[apop_index], target_track.x[apop_index]+shift_y, target_track.y[apop_index]+shift_x ## with transposed shift, just for the frame of apoptosis
+    outer_radial_bin = [tuple(((apop_event[0]+t, apop_event[1]-radius, apop_event[2]-radius),
+                               (apop_event[0]+t, apop_event[1]+radius, apop_event[2]-radius),
+                               (apop_event[0]+t, apop_event[1]+radius, apop_event[2]+radius),
+                               (apop_event[0]+t, apop_event[1]-radius, apop_event[2]+radius)))
+                                for t in range(-abs(delta_t), +abs(delta_t)+1)]
+    if inner_radius > 0:
+        inner_radial_bin = [tuple(((apop_event[0]+t, apop_event[1]-inner_radius, apop_event[2]-inner_radius),
+                                   (apop_event[0]+t, apop_event[1]+inner_radius, apop_event[2]-inner_radius),
+                                   (apop_event[0]+t, apop_event[1]+inner_radius, apop_event[2]+inner_radius),
+                                   (apop_event[0]+t, apop_event[1]-inner_radius, apop_event[2]+inner_radius)))
+                                    for t in range(-abs(delta_t), +abs(delta_t)+1)]
+        return viewer.add_shapes(outer_radial_bin,opacity = 1, shape_type = 'ellipse', face_color = 'transparent', edge_color = 'cyan', edge_width = 5, name = 'Radial environment'), viewer.add_shapes(inner_radial_bin, opacity = 1, shape_type = 'ellipse', face_color = 'transparent', edge_color = 'cyan', edge_width = 5, name = 'Inner Radial environment')
+    else:
+        return viewer.add_shapes(outer_radial_bin, opacity = 1, shape_type = 'ellipse', face_color = 'transparent', edge_color = 'cyan', edge_width = 5, name = 'Radial environment')
+
+def plot_radius(cell_type, cell_ID, radius):
+    """
+    This takes a cell type and cell ID and plots a radius around that cell for the cells life time
+    """
+    if cell_type.lower() == 'scr':
+        target_track = [track for track in scr_tracks if track.ID == cell_ID][0]
+    else:
+        target_track = [track for track in wt_tracks if track.ID == cell_ID][0]
+    radius_shape = [tuple(((t, target_track.x[i]+shift_y-radius, target_track.y[i]+shift_x-radius),
+                   (t, target_track.x[i]+shift_y+radius, target_track.y[i]+shift_x-radius),
+                   (t, target_track.x[i]+shift_y+radius, target_track.y[i]+shift_x+radius),
+                   (t, target_track.x[i]+shift_y-radius, target_track.y[i]+shift_x+radius)))
+                    for i,t in enumerate(range(target_track.t[0], target_track.t[-1]))]
+    return viewer.add_shapes(radius_shape, opacity = 1, shape_type = 'ellipse', face_color = 'transparent', edge_color = 'cyan', edge_width = 5, name = 'Radial environment')
+
+def plot_post_track_radius(cell_type, cell_ID, radius):
+    """
+    This takes a cell type and cell ID and plots a radius around that cell after that cell had died/disappeared
+    """
+    if cell_type.lower() == 'scr':
+        target_track = [track for track in scr_tracks if track.ID == cell_ID][0]
+    else:
+        target_track = [track for track in wt_tracks if track.ID == cell_ID][0]
+    radius_shape = [tuple(((t, target_track.x[-1]+shift_y-radius, target_track.y[-1]+shift_x-radius),
+                   (t, target_track.x[-1]+shift_y+radius, target_track.y[-1]+shift_x-radius),
+                   (t, target_track.x[-1]+shift_y+radius, target_track.y[-1]+shift_x+radius),
+                   (t, target_track.x[-1]+shift_y-radius, target_track.y[-1]+shift_x+radius)))
+                    for i,t in enumerate(range(target_track.t[-1],len(gfp)))]
+    return viewer.add_shapes(radius_shape, opacity = 1, shape_type = 'ellipse', face_color = 'transparent', edge_color = 'cyan', edge_width = 5, name = 'Post-apoptosis radial environment')
+
+def plot_fragmented_track(list_of_IDs): ### not using this below as dont think output is correct
+    """
+    This takes a list of cell IDs as a fragmented track and plots a radius around the location of each fragment
+    """
+    compiled_frag_track_loc = []
+    compiled_frag_radius_loc = []
+    for cell_ID in list_of_IDs:
+        target_track = [track for track in scr_tracks if track.ID == cell_ID][0]
+        #plot_radius(target_track)
+        #plot_target_track(target_track)
+        radius_loc = plot_frag_radius(target_track)
+        compiled_frag_radius_loc+= radius_loc
+        target_track_loc = plot_frag_target_track(target_track)
+        compiled_frag_track_loc += target_track_loc
+    return viewer.add_shapes(compiled_frag_radius_loc, opacity = 1, shape_type = 'ellipse', face_color = 'transparent', edge_color = 'cyan', edge_width = 5, name = 'Radial environment'), viewer.add_points(compiled_frag_track_loc, name = "Track of interest", size = 40, symbol = 'o', face_color = "transparent", edge_color = 'cyan', edge_width = 2)
+
+def plot_frag_target_track(target_track):
+    """
+    This takes a fragmented track, currently modelled on example cell 17 and provides the location of the cell whilst it is existent and then provides an alternate fragmented track after
+    """
+    if target_track.ID == 17:
+        target_track_loc = [(target_track.t[i], target_track.x[i]+shift_y, target_track.y[i]+shift_x) for i in range(len(target_track.t))]
+        return target_track_loc #viewer.add_points(target_track_loc, name = "Track of interest", size = 40, symbol = 'o', face_color = "transparent", edge_color = 'cyan', edge_width = 2)
+    else:
+        target_track_loc = [(target_track.t[i], target_track.x[i]+shift_y, target_track.y[i]+shift_x) for i in range(len(target_track.t)) if target_track.t[i]> 742]
+        return target_track_loc#viewer.add_points(target_track_loc, name = "Track of interest", size = 40, symbol = 'o', face_color = "transparent", edge_color = 'cyan', edge_width = 2)
+
+def plot_frag_radius(target_track):
+    """
+    This takes a fragmented track, currently modelled on example cell 17 and provides the location of the cellradius whilst it is existent and then provides an alternate fragmented track after
+    """
+    if target_track.ID ==17:### this if condition is to avoid double plotting radii as fragmented tracks exist at same time
+        radius_shape = [tuple(((t, target_track.x[i]+shift_y-radius, target_track.y[i]+shift_x-radius),
+                       (t, target_track.x[i]+shift_y+radius, target_track.y[i]+shift_x-radius),
+                       (t, target_track.x[i]+shift_y+radius, target_track.y[i]+shift_x+radius),
+                       (t, target_track.x[i]+shift_y-radius, target_track.y[i]+shift_x+radius)))
+                        for i,t in enumerate(range(target_track.t[0], target_track.t[-1]))]
+        return radius_shape
+    else:
+        radius_shape = [tuple(((t, target_track.x[i]+shift_y-radius, target_track.y[i]+shift_x-radius),
+                       (t, target_track.x[i]+shift_y+radius, target_track.y[i]+shift_x-radius),
+                       (t, target_track.x[i]+shift_y+radius, target_track.y[i]+shift_x+radius),
+                       (t, target_track.x[i]+shift_y-radius, target_track.y[i]+shift_x+radius)))
+                        for i,t in enumerate(range(target_track.t[0], target_track.t[-1])) if t>741]
+        return radius_shape
+
+def plot_radii(cell_type, target_track, radius, num_bins):
+    """
+    This takes a cell type, target track, radius and number of bins and plots the radius/number of bins as concentric circles following the target track
+    """
+    print('This can be very time consuming for >10 bins, consider using single_frame radius')
+    radii = range(int(radius/num_bins), radius+int(radius/num_bins), int(radius/num_bins))
+    if cell_type.lower() == 'scr':
+        target_track = [track for track in scr_tracks if track.ID == cell_ID][0]
+    else:
+        target_track = [track for track in wt_tracks if track.ID == cell_ID][0]
+    radius_shape = [tuple(((t, target_track.x[i]+shift_y-radius, target_track.y[i]+shift_x-radius),
+                   (t, target_track.x[i]+shift_y+radius, target_track.y[i]+shift_x-radius),
+                   (t, target_track.x[i]+shift_y+radius, target_track.y[i]+shift_x+radius),
+                   (t, target_track.x[i]+shift_y-radius, target_track.y[i]+shift_x+radius)))
+                    for i,t in enumerate(range(target_track.t[0], target_track.t[-1]))
+                    for radius in radii]
+    #return radius_shape
+    return viewer.add_shapes(radius_shape, opacity = 1, shape_type = 'ellipse', face_color = 'transparent', edge_color = 'cyan', edge_width = 5, name = 'Radial environment')
+
+def plot_stationary_radii(cell_type, target_track, radius, num_bins):
+    """
+    This takes a cell type, target track, radius and number of bins and plots the radius/number of bins as concentric circles stationary after the target track ceases to exist
+    """
+    print('This can be very time consuming for >10 bins, consider using single_frame radius')
+    radii = range(int(radius/num_bins), radius+int(radius/num_bins), int(radius/num_bins))
+    if cell_type.lower() == 'scr':
+        target_track = [track for track in scr_tracks if track.ID == cell_ID][0]
+    else:
+        target_track = [track for track in wt_tracks if track.ID == cell_ID][0]
+    radius_shape = [tuple(((t, target_track.x[-1]+shift_y-radius, target_track.y[-1]+shift_x-radius),
+                   (t, target_track.x[-1]+shift_y+radius, target_track.y[-1]+shift_x-radius),
+                   (t, target_track.x[-1]+shift_y+radius, target_track.y[-1]+shift_x+radius),
+                   (t, target_track.x[-1]+shift_y-radius, target_track.y[-1]+shift_x+radius)))
+                    for i,t in enumerate(range(target_track.t[-1]+1,len(gfp)))
+                    for radius in radii]
+    #return radius_shape
+    return viewer.add_shapes(radius_shape, opacity = 1, shape_type = 'ellipse', face_color = 'transparent', edge_color = 'cyan', edge_width = 5, name = 'Radial environment')
+
+def plot_single_frame_radii(cell_type, target_track, radius, num_bins, frame):
+    """
+    This takes a cell type, target track, radius, number of bins and a frame and plots the radius/number of bins as concentric circles at that frame time point only
+    """
+    cell_ID = target_track
+    t = frame
+    if cell_type.lower() == 'scr':
+        target_track = [track for track in scr_tracks if track.ID == cell_ID][0]
+    else:
+        target_track = [track for track in wt_tracks if track.ID == cell_ID][0]
+
+    try:
+        i = target_track.t.index(t)
+    except:
+        i=-1
+    radii = range(int(radius/num_bins), radius+int(radius/num_bins), int(radius/num_bins))
+    radius_shape = [tuple(((t, target_track.x[i]+shift_y-radius, target_track.y[i]+shift_x-radius),
+                   (t, target_track.x[i]+shift_y+radius, target_track.y[i]+shift_x-radius),
+                   (t, target_track.x[i]+shift_y+radius, target_track.y[i]+shift_x+radius),
+                   (t, target_track.x[i]+shift_y-radius, target_track.y[i]+shift_x+radius)))
+                    for radius in radii]
+    #return radius_shape
+    return viewer.add_shapes(radius_shape, opacity = 1, shape_type = 'ellipse', face_color = 'transparent', edge_color = 'cyan', edge_width = 5, name = 'Radial environment')
