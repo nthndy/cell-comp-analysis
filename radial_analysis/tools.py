@@ -26,7 +26,7 @@ import glob
 import os, re
 from tqdm import tqdm
 
-### below moved to dataio 
+### below moved to dataio
 # def load_tracking_data(tracks_path):
 #     """
 #     Tracks loader takes a path and returns the ordered tracking data for two populations of cells (i.e. wild-type and scr-kd)
@@ -89,7 +89,7 @@ def euc_dist(target_cell, other_cell, frame, focal_time):
     An important function that calculates the distance between two cells at a given frame in the timelapse microscope movie. If the cell has gone through an apoptosis, it's location will be returned as the apoptosis location. If the cell does not exist at that frame then a `np.inf` distance will be returned.
     """
     try:
-        if frame > target_cell.t[-1]: ## if the frame of the scan is beyond the final frame of the apoptotic cell then use the apoptosis location (ie if the cell has died then fix the scan location at the apoptotic frame location)
+        if frame > focal_time: ## this way ensures analytical continuity for control instance ##  target_cell.t[-1]: ## if the frame of the scan is beyond the final frame of the apoptotic cell then use the apoptosis location (ie if the cell has died then fix the scan location at the apoptotic frame location)
             idx0 = target_cell.t.index(focal_time) ## could also do just ## apop_index
         else:
             idx0 = target_cell.t.index(frame)
