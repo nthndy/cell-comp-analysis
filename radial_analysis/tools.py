@@ -26,27 +26,6 @@ import glob
 import os, re
 from tqdm import tqdm
 
-### below moved to dataio
-# def load_tracking_data(tracks_path):
-#     """
-#     Tracks loader takes a path and returns the ordered tracking data for two populations of cells (i.e. wild-type and scr-kd)
-#     The wild-type cells will have positive integer IDs and the mutant population will have negative integer IDs
-#     """
-#
-#     import btrack
-#     from btrack.utils import import_HDF, import_JSON
-#     print("Btrack version no.:", btrack.__version__)
-#
-#     with btrack.dataio.HDF5FileHandler(tracks_path, 'r', obj_type = "obj_type_1") as h:
-#         wt_cells = h.tracks
-#     with btrack.dataio.HDF5FileHandler(tracks_path, 'r', obj_type = "obj_type_2") as h:
-#         scr_cells = h.tracks
-#     for i in range(len(scr_cells)):
-#         scr_cells[i].ID = -(scr_cells[i].ID)
-#     all_cells = wt_cells + scr_cells ### negative IDs are scribble cells
-#     print("Track information loaded and ordered according to cell type (WT IDs >0> Scr IDs)")
-#     return wt_cells, scr_cells, all_cells
-
 def select_target_cell(cell_ID, all_cells, cell_type = 'Scr'):
     """
     Select target cell takes a cell ID and variable containing a population of loaded cells from previous function and returns the corresponding mutant cell by default, or the wild-type if specified.
