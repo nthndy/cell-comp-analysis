@@ -27,7 +27,6 @@ from tqdm import tqdm
 
 
 def N_cells(subject_cells, target_cell, radius, t_range, focal_time, num_bins):
-    ## output just npy
 
     N_cells = tools.cell_counter(subject_cells, target_cell, radius, t_range, focal_time)
     N_cells_distance = [N_cells[i][1] for i in range(0,len(N_cells))]
@@ -38,10 +37,25 @@ def N_cells(subject_cells, target_cell, radius, t_range, focal_time, num_bins):
 
     N_cells_hist, x_autolabels, y_autolabels = np.histogram2d(N_cells_distance, N_cells_time, bins=[distance_bin_edges, time_bin_edges])
 
+    ### output raw list of cell_ID, distance, in_frame
+    # global raw_parent_dir
+    # raw_parent_dir = input('If you want to save out raw list of cell IDs, distance and frames, enter desired parent directory, else just press enter')
+    if raw_parent_dir != '':
+        subj_cell_type = 'wt' if subject_cells[0].ID > 0 else 'Scr'
+        target_cell_type = 'wt' if target_cell.ID > 0 else 'Scr'
+        target_cell_ID = str(target_cell.ID)
+        raw_fn = expt+'_'+position+'_'+target_cell_type + target_cell_ID+ '_N_cells_' + subj_cell_type + '_rad_' + str(radius) + '_t_range_' + str(t_range) +'.csv'
+        raw_path = os.path.join(raw_parent_dir,'{}.{}'.format(radius,t_range))
+        if not os.path.exists(raw_path):
+            os.makedirs(raw_path)
+        with open(os.path.join(raw_path,raw_fn), 'w') as f:
+            for item in N_cells:
+                item = str(item)
+                f.write("%s\n" % item)
+
     return N_cells_hist
 
 def N_events(event, subject_cells, target_cell, radius, t_range, focal_time, num_bins):
-    ## output just npy
     if event == 'DIVIDE':
 
         N_events = tools.event_counter(event, subject_cells, target_cell, radius, t_range, focal_time)
@@ -54,8 +68,21 @@ def N_events(event, subject_cells, target_cell, radius, t_range, focal_time, num
 
         N_events_hist, x_autolabels, y_autolabels = np.histogram2d(N_events_distance, N_events_time, bins=[distance_bin_edges, time_bin_edges])
 
-        ### include this in plotting function ###
-        ##N_events_hist = np.flipud(N_events_hist) ## flip for desired graph orientation
+        ### output raw list
+        #raw_parent_dir = input('If you want to save out raw list of cell IDs, distance and frames, enter desired parent directory, else just press enter')
+        if raw_parent_dir != '':
+            subj_cell_type = 'wt' if subject_cells[0].ID > 0 else 'Scr'
+            target_cell_type = 'wt' if target_cell.ID > 0 else 'Scr'
+            target_cell_ID = str(target_cell.ID)
+
+            raw_fn = expt+'_'+position+'_'+target_cell_type + target_cell_ID+ '_N_events_' + subj_cell_type + '_rad_' + str(radius) + '_t_range_' + str(t_range) +'.csv'
+            raw_path = os.path.join(raw_parent_dir,'{}.{}'.format(radius,t_range))
+            if not os.path.exists(raw_path):
+                os.makedirs(raw_path)
+            with open(os.path.join(raw_path,raw_fn), 'w') as f:
+                for item in N_events:
+                    item = str(item)
+                    f.write("%s\n" % item)
 
     if event == 'APOPTOSIS':
         raise Exception('Apoptosis event counter not configured yet')
@@ -76,14 +103,22 @@ def iterative_heatmap_generator(subject_cells, subject_event, apoptosis_time_dic
     hdf5_file_path, error_log, success_log = [], [], []
     cell_count = 0
 
+    ### configure raw output if wanted
+    global raw_parent_dir, expt, position
+    raw_input_q = input('If you want to save out raw list of cell IDs, distance and frames, enter \'y\', else just press enter')
+    if raw_input_q == 'y':
+        raw_parent_dir = os.path.join(output_path.split('individual')[0], 'raw_lists')
+
     for apop_ID in tqdm(apoptosis_time_dict):
         #try:
+        #global expt, position
         expt = 'GV' +str(re.findall(r"GV(\d+)", apop_ID)[0])
         position = re.findall(r"Pos(\d+)", apop_ID)[0]
 
         position = 'Pos' + position
 
         expt_position = os.path.join(expt,position,'') ## additional '' here so that / added to end of string
+
         cell_ID = int((re.findall(r"(\d+)_.FP", apop_ID))[0])
         print("ID", apop_ID)
 
@@ -136,6 +171,12 @@ def iterative_control_heatmap_generator(focal_cells, subject_cells, subject_even
     hdf5_file_path, error_log, success_log = [], [], []
     cell_count = 0
 
+    ### configure raw output if wanted
+    global raw_parent_dir, expt, position
+    raw_input_q = input('If you want to save out raw list of cell IDs, distance and frames, enter \'y\', else just press enter')
+    if raw_input_q == 'y':
+        raw_parent_dir = os.path.join(output_path.split('individual')[0], 'raw_lists')
+
     for hdf5_file in tqdm(expt_dict):
 
         expt = 'GV' +str(re.findall(r"GV(\d+)", hdf5_file)[0])
@@ -143,6 +184,7 @@ def iterative_control_heatmap_generator(focal_cells, subject_cells, subject_even
 
         position = 'Pos' + position
 
+        global expt_position
         expt_position = os.path.join(expt,position,'') ## additional '' here so that / added to end of string
 
         if expt_position not in hdf5_file_path:
