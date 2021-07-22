@@ -92,7 +92,8 @@ def cell_counter(subject_cells, target_cell, radius, t_range, focal_time):
               ((focal_time + delta_t))))
                for delta_t in range(-int(t_range/2), int(t_range/2))
                for cell in subject_cells
-                   if euc_dist(target_cell, cell, focal_time + delta_t, focal_time)<radius and cell.ID != target_cell.ID
+                   if euc_dist(target_cell, cell, focal_time + delta_t, focal_time)<radius
+                   and cell.ID != target_cell.ID
                ]
     return cells
 
@@ -113,8 +114,9 @@ def event_counter(event, subject_cells, target_cell, radius, t_range, focal_time
                           ((cell.t[-1]))))
                            for cell in subject_cells
                                if euc_dist(target_cell, cell, cell.t[-1], focal_time)<radius and
-                                  cell.t[-1] in range(focal_time-int(t_range/2), focal_time+ int(t_range/2)) and
-                                  cell.fate.name == event
+                                  cell.t[-1] in range(focal_time-int(t_range/2), focal_time+ int(t_range/2))
+                                  and cell.fate.name == event
+                                  and cell.ID != target_cell.ID
                            ]
         return events
     elif event == 'DIVIDE':
@@ -123,8 +125,9 @@ def event_counter(event, subject_cells, target_cell, radius, t_range, focal_time
                           ((cell.t[-1]))))
                            for cell in subject_cells
                                if euc_dist(target_cell, cell, cell.t[-1], focal_time)<radius and
-                                  cell.t[-1] in range(focal_time-int(t_range/2), focal_time+ int(t_range/2)) and
-                                  cell.fate.name == event
+                                  cell.t[-1] in range(focal_time-int(t_range/2), focal_time+ int(t_range/2))
+                                  and cell.fate.name == event
+                                  and cell.ID != target_cell.ID
                            ]
         return events
     else:
