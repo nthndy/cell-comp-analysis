@@ -92,7 +92,7 @@ def cell_counter(subject_cells, target_cell, radius, t_range, focal_time):
               ((focal_time + delta_t))))
                for delta_t in range(-int(t_range/2), int(t_range/2))
                for cell in subject_cells
-                   if euc_dist(target_cell, cell, focal_time + delta_t, focal_time)<radius
+                   if euc_dist(target_cell, cell, focal_time + delta_t, focal_time)<radius and cell.ID != target_cell.ID
                ]
     return cells
 
