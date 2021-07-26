@@ -437,6 +437,86 @@ def old_kymo_labels(num_bins, label_freq, radius, t_range, SI):
 
     return xlocs, xlabels, ylocs, ylabels
 
+def kymograph_compiler(raw_files_dir, radius, t_range, num_bins):
+    """
+    This function compiles kymograph from raw list files directory
+    """
+    ### find individual radial scan raw files
+    N_cells_fns = natsorted(glob.glob(os.path.join(raw_files_dir, '*cells*')))
+    #N_events_fns = natsorted(glob.glob(os.path.join(raw_files_dir,'*events*'))
+    N_cells_cropped_hist_cumulative, N_events_cropped_hist_cumulative = np.zeros((num_bins, num_bins)), np.zeros((num_bins, num_bins))
+    ### ascertain the maximum scan parameters of chosen files
+    radius_max = int(re.findall(r'rad_(\d+)', N_cells_fns[0])[0])
+    t_range_max = int(re.findall(r't_range_(\d+)', N_cells_fns[0])[0])
+
+    # num_bins_uncropped = int(num_bins/radius * radius_max) ### maintains the same num_bins per radius over full extent of scan
+    # N_cells_hist_cumulative, N_events_hist_cumulative = np.zeros((num_bins_uncropped, num_bins_uncropped)), np.zeros((num_bins_uncropped, num_bins_uncropped))
+
+    N = len(N_cells_fns)
+    ### iterate through all files compiling into cumulative
+    for N_cells_fn in tqdm(N_cells_fns):
+
+        ## find events fn
+        N_events_fn = N_cells_fn.replace('cells','events')
+        ## load data
+        N_cells, N_events = [], []
+        with open(N_cells_fn, newline='') as csvfile:
+            N_cells_import_csv = csv.reader(csvfile, delimiter='\n')#, quotechar='|')
+            for row in N_cells_import_csv:
+                N_cells.append(eval(row[0]))
+        with open(N_events_fn, newline='') as csvfile:
+            N_events_import_csv = csv.reader(csvfile, delimiter='\n')#, quotechar='|')
+            for row in N_events_import_csv:
+                N_events.append(eval(row[0]))
+
+        #focal_time = int(re.findall(r'focal_t_(\d+)', N_cells_fn)[0])
+        ### temporary fix
+        if N_cells[0][2] != 0: ## ie if the earliest point of scan isnt clipped by beginning of movie
+            focal_time = int(t_range_max/2 + N_cells[0][2])
+        elif N_cells[-1][2] != 1175: ### ie if the end of the scan isn't clipped by the end of the movie
+            focal_time = int(N_cells[-1][2] - t_range_max/2)
+        #print('maximum extent of scan and focal time:', radius_max, t_range_max, focal_time)
+
+    #     ### make maximum extent distance/time lists
+    #     N_cells_distance = [N_cells[i][1] for i in range(0,len(N_cells))]
+    #     N_cells_time = [N_cells[i][2] for i in range(0,len(N_cells))]
+    #     N_events_distance = [N_events[i][1] for i in range(0,len(N_events))]
+    #     N_events_time = [N_events[i][2] for i in range(0,len(N_events))]
+    #     ### full extent N_cells/N_events histograms
+    #     time_bin_edges = np.linspace((-(int(t_range_max/2))+focal_time),(int(t_range_max/2)+focal_time), num_bins_uncropped+1) ## 2dimensionalise
+    #     distance_bin_edges = np.linspace(0,radius_max, num_bins_uncropped+1) ## 2dimensionalise
+    #     N_cells_hist, x_autolabels, y_autolabels = np.histogram2d(N_cells_distance, N_cells_time, bins=[distance_bin_edges, time_bin_edges])
+    #     N_events_hist,  x_autolabels, y_autolabels = np.histogram2d(N_events_distance, N_events_time, bins=[distance_bin_edges, time_bin_edges])
+    #     ### make cumulative histogram
+    #     N_cells_hist_cumulative += N_cells_hist
+    #     N_events_hist_cumulative += N_events_hist
+
+        ### make cropped list of distance and time
+        N_cells_cropped = [i for i in N_cells if i[1] < radius and (focal_time - (t_range/2)) <= i[2] < (focal_time + (t_range/2))]
+        N_cells_distance_cropped = [N_cells_cropped[i][1] for i in range(0,len(N_cells_cropped))]
+        N_cells_time_cropped = [N_cells_cropped[i][2] for i in range(0,len(N_cells_cropped))]
+        N_events_cropped = [i for i in N_events if i[1] < radius and (focal_time - (t_range/2)) <= i[2] < (focal_time + (t_range/2))]
+        N_events_distance_cropped = [N_events_cropped[i][1] for i in range(0,len(N_events_cropped))]
+        N_events_time_cropped = [N_events_cropped[i][2] for i in range(0,len(N_events_cropped))]
+        ### cropped N_cells/N_events histogram
+        time_bin_edges = np.linspace((-(int(t_range/2))+focal_time),(int(t_range/2)+focal_time), num_bins+1) ## 2dimensionalise
+        distance_bin_edges = np.linspace(0,radius, num_bins+1) ## 2dimensionalise
+        N_cells_cropped_hist, x_autolabels, y_autolabels = np.histogram2d(N_cells_distance_cropped, N_cells_time_cropped, bins=[distance_bin_edges, time_bin_edges])
+        N_events_cropped_hist,  x_autolabels, y_autolabels = np.histogram2d(N_events_distance_cropped, N_events_time_cropped, bins=[distance_bin_edges, time_bin_edges])
+        ## make cumulative cropped histogram
+        N_cells_cropped_hist_cumulative += N_cells_cropped_hist
+        N_events_cropped_hist_cumulative += N_events_cropped_hist
+
+    P_events = N_events_cropped_hist_cumulative/N_cells_cropped_hist_cumulative
+
+    ### info for rendering of graph ### change with new fns when ready
+    focal_cell = re.findall(r'(?<=Pos._)[a-zA-Z]+',N_cells_fns[0])[0]
+    subject_cell = re.findall(r'(?<=N_cells_)[a-zA-Z]+',N_cells_fns[0])[0]
+    focal_event = 'apoptosis'
+    subject_event = 'division'
+
+    return N_cells_cropped_hist_cumulative, N_events_cropped_hist_cumulative, P_events
+
 """
 Raw data viewer rendering WIP below, needs work as doesnt recognise `viewer` atm
 
