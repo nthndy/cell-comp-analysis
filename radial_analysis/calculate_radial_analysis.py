@@ -75,7 +75,7 @@ def N_events(event, subject_cells, target_cell, radius, t_range, focal_time, num
             target_cell_type = 'wt' if target_cell.ID > 0 else 'Scr'
             target_cell_ID = str(target_cell.ID)
 
-            raw_fn = expt+'_'+position+'_'+target_cell_type + target_cell_ID+ '_N_events_' + subj_cell_type + event[0:3].lower()+ '_rad_' + str(radius) + '_t_range_' + str(t_range) ++ '_focal_t_' + str(focal_time)+'.csv'
+            raw_fn = expt+'_'+position+'_'+target_cell_type + target_cell_ID+ '_N_events_' + subj_cell_type + event[0:3].lower() + '_rad_' + str(radius) + '_t_range_' + str(t_range) + '_focal_t_' + str(focal_time)+'.csv'
             raw_path = os.path.join(raw_parent_dir,'{}.{}'.format(radius,t_range))
             if not os.path.exists(raw_path):
                 os.makedirs(raw_path)
@@ -107,7 +107,7 @@ def iterative_heatmap_generator(subject_cells, subject_event, apoptosis_time_dic
     global raw_parent_dir, expt, position
     raw_input_q = input('If you want to save out raw list of cell IDs, distance and frames, enter \'y\', else just press enter')
     if raw_input_q == 'y':
-        raw_parent_dir = os.path.join(output_path.split('individual')[0], 'raw_lists')
+        raw_parent_dir = os.path.join(output_path.split('individual')[0], 'raw_lists/canon')
 
     for apop_ID in tqdm(apoptosis_time_dict):
         #try:
@@ -175,7 +175,7 @@ def iterative_control_heatmap_generator(focal_cells, subject_cells, subject_even
     global raw_parent_dir, expt, position
     raw_input_q = input('If you want to save out raw list of cell IDs, distance and frames, enter \'y\', else just press enter')
     if raw_input_q == 'y':
-        raw_parent_dir = os.path.join(output_path.split('individual')[0], 'raw_lists')
+        raw_parent_dir = os.path.join(output_path.split('individual')[0], 'raw_lists/control')
 
     for hdf5_file in tqdm(expt_dict):
 
