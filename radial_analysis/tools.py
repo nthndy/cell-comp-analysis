@@ -122,7 +122,7 @@ def event_counter(event, subject_cells, target_cell, radius, t_range, focal_time
     elif event == 'DIVIDE':
         events = [tuple(((cell.ID),
                           (round((euc_dist(target_cell, cell, cell.t[-1], focal_time)),2)),
-                          ((cell.t[-1]))))
+                          ((cell.t[-1])))) ### this point of division is reliably the last frame of the dividing cell
                            for cell in subject_cells
                                if euc_dist(target_cell, cell, cell.t[-1], focal_time)<radius and
                                   cell.t[-1] in range(focal_time-int(t_range/2), focal_time+ int(t_range/2))
