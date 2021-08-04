@@ -1,4 +1,4 @@
-# Analysis for reverse engineering cell competition using multimodal microscopy and deep learning analysis
+# Analysis for reverse engineering cell competition using multimodal microscopy and deep learning
 
 This repository features various analysis scripts from my PhD project studying cell competition.
 
