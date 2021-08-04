@@ -37,7 +37,7 @@ import matplotlib.pyplot as plt
 import tools
 from datetime import datetime
 import matplotlib.font_manager
-
+import calculate_radial_analysis as calculate
 
 """
 Graph rendering below
@@ -307,9 +307,9 @@ def auto_plot_cumulative(input_2d_hist, input_type, N, num_bins, radius, t_range
 
         ## output save path formatting
         save_dir_name = '{}_{}_{}_{}'.format(focal_cell.lower(), focal_event.lower()[0:3] if focal_event == 'DIVISION' else focal_event.lower()[0:4], subject_cell.lower(), subject_event.lower()[0:3] if subject_event == 'DIVISION' else subject_event.lower()[0:4])
-        save_dir = '{}.{}.{}/{}'.format(radius,t_range,num_bins,save_dir_name)
-        save_path = os.path.join(save_parent_dir,save_dir)
-        Path(save_path).mkdir(parents=True, exist_ok=True)
+        save_path = os.path.join(save_parent_dir,save_dir_name)
+        if not input_type == 'dP': ### combined type does not require segregated folders for canon control
+            Path(save_path).mkdir(parents=True, exist_ok=True)
 
         ## title formatting
         if input_type == 'N_cells':
@@ -321,6 +321,19 @@ def auto_plot_cumulative(input_2d_hist, input_type, N, num_bins, radius, t_range
         if input_type == 'P_events':
             title = 'Spatiotemporal dist. of probability of {} {} \n around {} {} (N={})'.format(subj_cell_name, subj_event_name, focal_cell_name, focal_event_name, N)
             cb_label = 'Probability of {} {}'.format(subj_cell_name, subj_event_name)
+        if input_type == 'CV':
+            title = 'Coefficient of variation of probability of {} {} \n around {} {} (N={})'.format(subj_cell_name, subj_event_name, focal_cell_name, focal_event_name, N)
+            cb_label = 'Coefficient of variation'
+        if input_type == 'stat_rel':
+            title = 'Statisticall relevant areas of probability of {} {} \n around {} {} (N={})'.format(subj_cell_name, subj_event_name, focal_cell_name, focal_event_name, N)
+            cb_label = 'Relevant areas are set equal to 1'
+        if input_type == 'dP':
+            title = 'Difference in probability between \ncanonical and control analysis \ni.e. probability of division above background'.format(subj_cell_name, subj_event_name, focal_cell_name, focal_event_name, N)
+            cb_label = 'Difference in probability\n above background'
+            save_path = save_parent_dir
+        # else:
+        #     title = ''
+        #     cb_label = ''
 
         ## label unit formatting
         if SI == True:
@@ -344,16 +357,10 @@ def auto_plot_cumulative(input_2d_hist, input_type, N, num_bins, radius, t_range
         else:
             final_hist = np.flipud(input_2d_hist[1:-1,:])
 
-        plt.imshow(final_hist)
-
-        # if cbar_lim == '':
-        #     plt.colorbar(label = cb_label, **font)
-        # else:
-        #     plt.clim(vmin=cbar_lim[0], vmax=cbar_lim[1])
-        #     plt.colorbar(label = cb_label, **font)
-
-
-
+        if input_type == 'dP':
+            plt.imshow(final_hist)#), cmap = 'PiYG') ### need to fix this
+        else:
+            plt.imshow(final_hist)
 
         ## apop location marker
         if num_bins == 10:
@@ -370,19 +377,6 @@ def auto_plot_cumulative(input_2d_hist, input_type, N, num_bins, radius, t_range
             else:
                 plt.scatter(num_bins/2-0.5, num_bins-1.8, s=20, c='white', marker='v')
                 plt.text(num_bins+0.3, num_bins+2.5, 'Apoptosis location \nshown by inverted \nwhite triangle', **font)
-        else:
-            print('Omitting apoptosis location label marker due to graph size (try num_bins = 10 or 20)')
-
-        # ### when manually editing the typeface of the colorbar
-        # if cbar_lim == '':
-        #     if include_apop_bin == False:
-        #         plt.clim(vmin=np.min(P_events[1:-1,:]), vmax=np.max(P_events[1:-1,:]))
-        #     else:
-        #         plt.clim(vmin=np.min(P_events), vmax=np.max(P_events))
-        #     plt.colorbar(label = cb_label)
-        # else:
-        #     plt.clim(vmin=cbar_lim[0], vmax=cbar_lim[1])
-        #     plt.colorbar(label = cb_label)
 
         ## colorbar
         if cbar_lim == '':
@@ -406,8 +400,7 @@ def auto_plot_cumulative(input_2d_hist, input_type, N, num_bins, radius, t_range
             ax.set_yticklabels(np.round(ax.get_yticks(),5),**{'fontname':'Liberation Mono'})
 
         ## filename
-        fn = os.path.join(save_path,title+'.pdf')
-
+        fn = save_path+'/'+title+' {}.{}.{}.pdf'.format(radius,t_range,num_bins)
         ## failsafe overwriting block
         if os.path.exists(fn):
             print("Filename", fn, "already exists, saving as updated copy")
@@ -421,6 +414,341 @@ def auto_plot_cumulative(input_2d_hist, input_type, N, num_bins, radius, t_range
             plt.savefig(fn, dpi = 300, bbox_inches = 'tight')
             print("Plot saved at ", fn)
             return plt.imshow(final_hist)
+
+def MEGAPLOT(N_cells, N_events, P_events, N_cells_c, N_events_c, P_events_c, N, N_c, limit, limit_c, cbar_lim, radius, t_range, num_bins, save_parent_dir):
+
+    #### MEGAPLOT
+    print('Thank you for choosing MEGAPLOT\n\n')
+    ###### canon ### plot without cbar lim
+    save_dir = os.path.join(save_parent_dir, 'uncrop_unlim')
+    focal_cell = 'Scr'
+    focal_event = 'apop'
+    subject_cell = 'wt'
+    subject_event = 'div'
+    plt.clf()
+    auto_plot_cumulative(P_events,
+                     'P_events',
+                      N,
+                      num_bins  ,
+                      radius ,
+                      t_range ,
+                      focal_cell,
+                      focal_event,
+                      subject_cell,
+                      subject_event,
+                      save_dir ,
+                      '',#cbar_lim = (0, 0.002),
+                      include_apop_bin = True,
+                      SI = True)
+    plt.clf()
+    auto_plot_cumulative(N_events,
+                     'N_events',
+                      N,
+                      num_bins  ,
+                      radius ,
+                      t_range ,
+                      focal_cell,
+                      focal_event,
+                      subject_cell,
+                      subject_event,
+                      save_dir ,
+                      '',#cbar_lim = (0, 0.002),
+                      include_apop_bin = True,
+                      SI = True)
+    plt.clf()
+    auto_plot_cumulative(N_cells,
+                     'N_cells',
+                      N,
+                      num_bins  ,
+                      radius ,
+                      t_range ,
+                      focal_cell,
+                      focal_event,
+                      subject_cell,
+                      subject_event,
+                      save_dir ,
+                      '',#cbar_lim = (0, 0.002),
+                      include_apop_bin = True,
+                      SI = True)
+    plt.clf()
+    ###### control ### plot without cbar lim
+    focal_cell = 'wt'
+    focal_event = 'control'
+    subject_cell = 'wt'
+    subject_event = 'div'
+    plt.clf()
+    auto_plot_cumulative(P_events_c,
+                     'P_events',
+                      N_c,
+                      num_bins  ,
+                      radius ,
+                      t_range ,
+                      focal_cell,
+                      focal_event,
+                      subject_cell,
+                      subject_event,
+                      save_dir ,
+                      '',#cbar_lim = (0, 0.002),
+                      include_apop_bin = True,
+                      SI = True)
+    plt.clf()
+    auto_plot_cumulative(N_events_c,
+                     'N_events',
+                      N_c,
+                      num_bins  ,
+                      radius ,
+                      t_range ,
+                      focal_cell,
+                      focal_event,
+                      subject_cell,
+                      subject_event,
+                      save_dir ,
+                      '',#cbar_lim = (0, 0.002),
+                      include_apop_bin = True,
+                      SI = True)
+    plt.clf()
+    auto_plot_cumulative(N_cells_c,
+                     'N_cells',
+                      N_c,
+                      num_bins  ,
+                      radius ,
+                      t_range ,
+                      focal_cell,
+                      focal_event,
+                      subject_cell,
+                      subject_event,
+                      save_dir ,
+                      '',#cbar_lim = (0, 0.002),
+                      include_apop_bin = True,
+                      SI = True)
+    plt.clf()
+
+
+    ### plot with cbar_lim
+    save_dir = os.path.join(save_parent_dir, 'cbar_lim')
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+    ###### canon ### plot with cbar_lim
+    focal_cell = 'Scr'
+    focal_event = 'apop'
+    subject_cell = 'wt'
+    subject_event = 'div'
+    plt.clf()
+    auto_plot_cumulative(P_events,
+                     'P_events',
+                      N,
+                      num_bins  ,
+                      radius ,
+                      t_range ,
+                      focal_cell,
+                      focal_event,
+                      subject_cell,
+                      subject_event,
+                      save_dir ,
+                      cbar_lim,
+                      include_apop_bin = True,
+                      SI = True)
+
+    ###### control ### plot with cbar_lim
+    focal_cell = 'wt'
+    focal_event = 'control'
+    subject_cell = 'wt'
+    subject_event = 'div'
+    plt.clf()
+    auto_plot_cumulative(P_events_c,
+                     'P_events',
+                      N_c,
+                      num_bins  ,
+                      radius ,
+                      t_range ,
+                      focal_cell,
+                      focal_event,
+                      subject_cell,
+                      subject_event,
+                      save_dir ,
+                      cbar_lim,
+                      include_apop_bin = True,
+                      SI = True)
+
+
+    ### plot with crop
+    save_dir = os.path.join(save_parent_dir, 'crop')
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+    ###### canon ### plot with crop
+    focal_cell = 'Scr'
+    focal_event = 'apop'
+    subject_cell = 'wt'
+    subject_event = 'div'
+    plt.clf()
+    auto_plot_cumulative(P_events,
+                     'P_events',
+                      N,
+                      num_bins  ,
+                      radius ,
+                      t_range ,
+                      focal_cell,
+                      focal_event,
+                      subject_cell,
+                      subject_event,
+                      save_dir ,
+                      '',#cbar_lim = (0, 0.002),
+                      include_apop_bin = False,
+                      SI = True)
+
+    ###### control ### plot with crop
+    focal_cell = 'wt'
+    focal_event = 'control'
+    subject_cell = 'wt'
+    subject_event = 'div'
+    plt.clf()
+    auto_plot_cumulative(P_events_c,
+                     'P_events',
+                      N_c,
+                      num_bins  ,
+                      radius ,
+                      t_range ,
+                      focal_cell,
+                      focal_event,
+                      subject_cell,
+                      subject_event,
+                      save_dir ,
+                      '',#cbar_lim = (0, 0.002),
+                      include_apop_bin = False,
+                      SI = True)
+
+    ### plot with cbar lim crop
+    save_dir = os.path.join(save_parent_dir, 'cbar_lim_crop')
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+    ###### canon ### plot with crop
+    focal_cell = 'Scr'
+    focal_event = 'apop'
+    subject_cell = 'wt'
+    subject_event = 'div'
+    plt.clf()
+    auto_plot_cumulative(P_events,
+                     'P_events',
+                      N,
+                      num_bins  ,
+                      radius ,
+                      t_range ,
+                      focal_cell,
+                      focal_event,
+                      subject_cell,
+                      subject_event,
+                      save_dir ,
+                      cbar_lim,
+                      include_apop_bin = False,
+                      SI = True)
+
+    ###### control ### plot with crop
+    focal_cell = 'wt'
+    focal_event = 'control'
+    subject_cell = 'wt'
+    subject_event = 'div'
+    plt.clf()
+    auto_plot_cumulative(P_events_c,
+                     'P_events',
+                      N_c,
+                      num_bins  ,
+                      radius ,
+                      t_range ,
+                      focal_cell,
+                      focal_event,
+                      subject_cell,
+                      subject_event,
+                      save_dir ,
+                      cbar_lim,
+                      include_apop_bin = False,
+                      SI = True)
+    ### coeff var?
+    save_dir = os.path.join(save_parent_dir, 'CV')
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+    #### CANON CV
+    cv = np.nan_to_num(np.sqrt((1-P_events)/(P_events*N_cells)), posinf = 1)
+    #######
+    focal_cell = 'Scr'
+    focal_event = 'apop'
+    subject_cell = 'wt'
+    subject_event = 'div'
+    plt.clf()
+    auto_plot_cumulative(cv,
+                               'CV',
+                               N,
+                              num_bins  ,
+                              radius ,
+                              t_range ,
+                              focal_cell,
+                              focal_event,
+                              subject_cell,
+                              subject_event,
+                              save_dir ,
+                              '',
+                              include_apop_bin = True,
+                              SI = True)
+    ###### control CV
+    cv_c = np.nan_to_num(np.sqrt(((1-P_events_c)/(P_events_c*N_cells_c))), posinf = 1)
+    #####
+    focal_cell = 'wt'
+    focal_event = 'control'
+    subject_cell = 'wt'
+    subject_event = 'div'
+    plt.clf()
+    auto_plot_cumulative(cv_c,
+                     'CV',
+                      N_c,
+                      num_bins  ,
+                      radius ,
+                      t_range ,
+                      focal_cell,
+                      focal_event,
+                      subject_cell,
+                      subject_event,
+                      save_dir ,
+                      '',
+                      include_apop_bin = True,
+                      SI = True)
+    ### combined coeff var
+    stat_rel = calculate.stat_relevance_calc(num_bins, P_events, P_events_c, cv, cv_c)
+    plt.clf()
+    auto_plot_cumulative(stat_rel,
+                     'stat_rel',
+                      N_c,
+                      num_bins  ,
+                      radius ,
+                      t_range ,
+                      focal_cell,
+                      focal_event,
+                      subject_cell,
+                      subject_event,
+                      save_dir ,
+                      '',
+                      include_apop_bin = True,
+                      SI = True)
+    ### combined plot
+    save_dir = os.path.join(save_parent_dir, 'combined')
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+    dP_events = P_events - P_events_c
+    plt.clf()
+    auto_plot_cumulative(dP_events,
+                     'dP',
+                      N_c,
+                      num_bins  ,
+                      radius ,
+                      t_range ,
+                      focal_cell,
+                      focal_event,
+                      subject_cell,
+                      subject_event,
+                      save_dir ,
+                      '',
+                      include_apop_bin = True,
+                      SI = True)
+
+    return print('Plots saved out')
 
 def plot_cumulative(input_2d_hist, num_bins, radius, t_range, title, label, cb_label, save_path, SI):
 
