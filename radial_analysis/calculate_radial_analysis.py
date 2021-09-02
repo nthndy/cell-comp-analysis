@@ -176,7 +176,7 @@ def iterative_heatmap_generator(
     )
     if raw_input_q == "y":
         raw_parent_dir = os.path.join(
-            output_path.split("individual")[0], "raw_lists/canon"
+            output_path.split("individual")[0], "raw_lists/"
         )
 
     for apop_ID in tqdm(apoptosis_time_dict):
