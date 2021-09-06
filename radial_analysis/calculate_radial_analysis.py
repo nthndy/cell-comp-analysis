@@ -175,9 +175,7 @@ def iterative_heatmap_generator(
         "If you want to save out raw list of cell IDs, distance and frames, enter 'y', else just press enter"
     )
     if raw_input_q == "y":
-        raw_parent_dir = os.path.join(
-            output_path.split("individual")[0], "raw_lists/"
-        )
+        raw_parent_dir = os.path.join(output_path.split("individual")[0], "raw_lists/")
 
     for apop_ID in tqdm(apoptosis_time_dict):
         # try:

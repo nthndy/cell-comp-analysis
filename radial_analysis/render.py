@@ -424,8 +424,888 @@ def auto_plot_cumulative_defaulttext(
         print("Plot saved at ", fn)
         return plt.imshow(final_hist)
 
-
 def auto_plot_cumulative(
+input_dict
+):
+    plt.clf()
+    ### read input parameters and data
+    input_2d_hist = input_dict['input_2d_hist']
+    input_type = input_dict['input_type']
+    N = input_dict['N']
+    radius = input_dict['radius']
+    t_range = input_dict['t_range']
+    focal_cell = input_dict['focal_cell']
+    focal_event = input_dict['focal_event']
+    subject_cell = input_dict['subject_cell']
+    subject_event = input_dict['subject_event']
+
+    ### set the default params if param entry in dict is empty
+    ### default is to include the apoptotic spatial bin
+    if 'include_apop_bin' not in input_dict:
+        include_apop_bin = True
+    else:
+        include_apop_bin = input_dict['include_apop_bin']
+    ### default to have standard measures
+    if 'SI' not in input_dict:
+        SI = True
+    else:
+        SI = input_dict['SI']
+    ### default to have no bin labels
+    if 'bin_labels' not in input_dict:
+        bin_labels = False
+    else:
+        bin_labels = input_dict['bin_labels']
+    ### default to read the number of bins from the array shape
+    if 'num_bins' not in input_dict:
+        num_bins = input_2d_hist.shape[0]
+    else:
+        num_bins = input_dict['num_bins']
+    ### default is to have no cbar_lim
+    if 'cbar_lim' not in input_dict:
+        cbar_lim = False
+    else:
+        cbar_lim = input_dict['cbar_lim']
+
+    ### set the label frequency according to the num bins
+    if num_bins > 20:
+        label_freq = 4
+    else:
+        label_freq = 1
+    xlocs, xlabels, ylocs, ylabels = kymo_labels(
+        num_bins, label_freq, radius, t_range, SI
+    )
+
+    ## formatting cell and event names
+    focal_event_name = (
+        "apoptoses" if "apop" in focal_event.lower() else "divisions"
+    )  # focal_event == 'APOPTOSIS' or 'apop' else 'divisions'
+    focal_cell_name = "wild-type" if "wt" in focal_cell.lower() else "Scribble"
+    subj_event_name = "apoptoses" if "apop" in subject_event.lower() else "divisions"
+    subj_cell_name = "wild-type" if "wt" in subject_cell.lower() else "Scribble"
+
+    if focal_event == "control":
+        focal_event_name = "random time points"
+
+    title = (
+        "Spatiotemporal dist. of probability of {} {} \n around {} {} (N={})".format(
+            subj_cell_name, subj_event_name, focal_cell_name, focal_event_name, N
+        )
+    )
+
+    ## title formatting
+    if input_type == "N_cells":
+        title = "Spatiotemporal dist. of {} cells \n around {} {} (N={})".format(
+            subj_cell_name, focal_cell_name, focal_event_name, N
+        )
+        cb_label = f"Number of {subj_cell_name} cell apperances"
+    if input_type == "N_events":
+        title = "Spatiotemporal dist. of {} {} \n around {} {} (N={})".format(
+            subj_cell_name, subj_event_name, focal_cell_name, focal_event_name, N
+        )
+        cb_label = f"Number of {subj_cell_name} {subj_event_name}"
+    if input_type == "P_events":
+        title = "Spatiotemporal dist. of probability of {} {} \n around {} {} (N={})".format(
+            subj_cell_name, subj_event_name, focal_cell_name, focal_event_name, N
+        )
+        cb_label = f"Probability of {subj_cell_name} {subj_event_name}"
+    if input_type == "CV":
+        title = "Coefficient of variation of probability of {} {} \n around {} {} (N={})".format(
+            subj_cell_name, subj_event_name, focal_cell_name, focal_event_name, N
+        )
+        cb_label = "Coefficient of variation"
+    if input_type == "stat_rel":
+        title = "Statisticall relevant areas of probability of {} {} \n around {} {} (N={})".format(
+            subj_cell_name, subj_event_name, focal_cell_name, focal_event_name, N
+        )
+        cb_label = "Relevant areas are set equal to 1"
+    if input_type == "dP":
+        title = "Difference in probability between \ncanonical and control analysis \ni.e. probability of division above background".format(
+            subj_cell_name, subj_event_name, focal_cell_name, focal_event_name, N
+        )
+        cb_label = "Difference in probability\n above background"
+
+    ## label unit formatting
+    if SI == True:
+        time_unit = "(Hours)"
+        distance_unit = "(Micrometers)"
+    else:
+        time_unit = "(Frames)"
+        distance_unit = "(Pixels)"
+
+    ## plotting
+    font = {"fontname": "Liberation Mono"}
+    plt.xticks(xlocs, xlabels, rotation="vertical", **font)
+    plt.yticks(ylocs, ylabels, **font)
+    plt.xlabel("Time since apoptosis " + time_unit, **font)
+    plt.ylabel("Distance from apoptosis " + distance_unit, **font)
+    plt.title(title + "\n", fontweight="bold", **font)
+
+    ## if include_apop_bin is true then the spatial bin containing the apoptotic cell (ie the central spatial bin of the radial scan) will be show in the graph, if false then it is cropped which ends up with a plot showing only the relevant local env not the site of apop (better imo)
+    if include_apop_bin == True:
+        final_hist = np.flipud(input_2d_hist)  ## flip for desired graph orientation
+    else:
+        final_hist = np.flipud(input_2d_hist[1:-1, :])
+
+    ## apop location marker
+    if num_bins == 10:
+        if include_apop_bin == True:
+            plt.scatter(
+                num_bins / 2 - 0.5, num_bins - 0.75, s=20, c="white", marker="v"
+            )
+            plt.text(
+                num_bins + 0.15,
+                num_bins + 1.5,
+                "Apoptosis location \nshown by inverted \nwhite triangle",
+                **font,
+            )
+        else:
+            plt.scatter(
+                num_bins / 2 - 0.5, num_bins - 2 - 0.75, s=20, c="white", marker="v"
+            )
+            plt.text(
+                num_bins + 0.15,
+                num_bins + 1.5 - 2,
+                "Apoptosis location \nshown by inverted \nwhite triangle",
+                **font,
+            )
+    if num_bins == 20:
+        if include_apop_bin == True:
+            plt.scatter(num_bins / 2 - 0.5, num_bins - 0.9, s=20, c="white", marker="v")
+            plt.text(
+                num_bins + 0.3,
+                num_bins + 3.5,
+                "Apoptosis location \nshown by inverted \nwhite triangle",
+                **font,
+            )
+        else:
+            plt.scatter(num_bins / 2 - 0.5, num_bins - 1.8, s=20, c="white", marker="v")
+            plt.text(
+                num_bins + 0.3,
+                num_bins + 2.5,
+                "Apoptosis location \nshown by inverted \nwhite triangle",
+                **font,
+            )
+
+    ## colorbar
+    if cbar_lim == False:
+        if include_apop_bin == False:
+            plt.clim(
+                vmin=np.min(input_2d_hist[1:-1, :]), vmax=np.max(input_2d_hist[1:-1, :])
+            )
+        else:
+            plt.clim(vmin=np.min(input_2d_hist), vmax=np.max(input_2d_hist))
+        cb = plt.colorbar(
+            label=cb_label
+        )  ### matplotlib.cm.ScalarMappable(norm = ???cmap='PiYG'), use this in conjunction with norm to set cbar equal to diff piyg coloourscheme
+        ax = cb.ax
+        text = ax.yaxis.label
+        font = matplotlib.font_manager.FontProperties(family="Liberation Mono")
+        text.set_font_properties(font)
+        ax.set_yticklabels(
+            np.round(ax.get_yticks(), 5), **{"fontname": "Liberation Mono"}
+        )  ### cropped to 5dp
+    else:
+        cbar_lim = input_dict['cbar_lim']
+        plt.clim(vmin=cbar_lim[0], vmax=cbar_lim[1])
+        cb = plt.colorbar(label=cb_label)
+        ax = cb.ax
+        text = ax.yaxis.label
+        font = matplotlib.font_manager.FontProperties(family="Liberation Mono")
+        text.set_font_properties(font)
+        ax.set_yticklabels(
+            np.round(ax.get_yticks(), 5), **{"fontname": "Liberation Mono"}
+        )
+
+    ## bin labels
+    if bin_labels == True:
+        flipped = np.flipud(input_2d_hist)
+        if input_type == "P_events":
+            for i in range(len(input_2d_hist)):
+                for j in range(len(input_2d_hist)):
+                    text = plt.text(
+                        j,
+                        i,
+                        round(flipped[i, j], 5),
+                        ha="center",
+                        va="center",
+                        color="w",
+                        fontsize="xx-small",
+                    )
+        elif input_type == "dP":
+            for i in range(len(input_2d_hist)):
+                for j in range(len(input_2d_hist)):
+                    text = plt.text(
+                        j,
+                        i,
+                        round(flipped[i, j], 6),
+                        ha="center",
+                        va="center",
+                        color="w",
+                        fontsize="xx-small",
+                    )
+        elif input_type == "CV":
+            for i in range(len(input_2d_hist)):
+                for j in range(len(input_2d_hist)):
+                    text = plt.text(
+                        j,
+                        i,
+                        round(flipped[i, j], 3),
+                        ha="center",
+                        va="center",
+                        color="w",
+                        fontsize="xx-small",
+                    )
+        if input_type == "stat_rel":
+            for i in range(len(input_2d_hist)):
+                for j in range(len(input_2d_hist)):
+                    text = plt.text(
+                        j,
+                        i,
+                        int(flipped[i, j]),
+                        ha="center",
+                        va="center",
+                        color="w",
+                        fontsize="xx-small",
+                    )
+        else:
+            for i in range(len(input_2d_hist)):
+                for j in range(len(input_2d_hist)):
+                    text = plt.text(
+                        j,
+                        i,
+                        int(flipped[i, j]),
+                        ha="center",
+                        va="center",
+                        color="w",
+                        fontsize="xx-small",
+                    )
+    ## save out?
+    if 'save_parent_dir' not in input_dict:
+        plt.imshow(final_hist)
+        return   # ,cmap = 'PiYG')
+    else:
+        ## output save path formatting
+        save_parent_dir = input_dict['save_parent_dir']
+        save_dir_name = "{}_{}_{}_{}".format(
+            focal_cell.lower(),
+            focal_event.lower()[0:3]
+            if focal_event == "DIVISION"
+            else focal_event.lower()[0:4],
+            subject_cell.lower(),
+            subject_event.lower()[0:3]
+            if subject_event == "DIVISION"
+            else subject_event.lower()[0:4],
+        )
+        save_path = os.path.join(save_parent_dir, save_dir_name)
+        # if (
+        #     not input_type == "dP"
+        # ):  ### combined type does not require segregated folders for canon control
+        Path(save_path).mkdir(parents=True, exist_ok=True)
+
+        ## filename
+        fn = save_path + "/" + title + f" {radius}.{t_range}.{num_bins}.pdf"
+        ## failsafe overwriting block
+        if os.path.exists(fn):
+            print("Filename", fn, "already exists, saving as updated copy")
+            fn = fn.replace(
+                ".pdf", " (updated {}).pdf".format(time.strftime("%Y%m%d-%H%M%S"))
+            )
+        plt.imshow(final_hist)
+        plt.plot()
+        plt.savefig(fn, dpi=300, bbox_inches="tight")
+        print("Plot saved at ", fn)
+
+        return plt.imshow(final_hist)
+
+def MEGAPLOT(
+    input_dict
+):
+
+    #### MEGAPLOT
+    print("Thank you for choosing MEGAPLOT\n\n")
+    ### load input arrays
+    N_cells = input_dict['N_cells']
+    N_events = input_dict['N_events']
+    P_events = input_dict['P_events']
+    N_cells_c = input_dict['N_cells_c']
+    N_events_c = input_dict['N_events_c']
+    P_events_c = input_dict['P_events_c']
+    N, N_c = input_dict['N'], input_dict['N_c']
+    save_parent_dir = input_dict['save_parent_dir']
+
+    ### set few default options (until they are changed)
+    input_dict['include_apop_bin'] = True
+    input_dict['bin_labels'] = False
+    input_dict['SI'] = True
+    input_dict['cbar_lim'] = False
+
+    ### make output dir
+    input_dict['save_parent_dir'] = os.path.join(save_parent_dir, "uncrop_unlim")
+    if not os.path.exists(input_dict['save_parent_dir']):
+        os.makedirs(input_dict['save_parent_dir'])
+
+    ### params for canon
+    input_dict['focal_cell'] = "Scr"
+    input_dict['focal_event'] = "apop"
+    input_dict['subject_cell'] = "wt"
+    input_dict['subject_event'] = "div"
+    input_dict['N'] = N
+
+    ### specify graph type P_events
+    input_dict['input_2d_hist'] = P_events
+    input_dict['input_type'] = 'P_events'
+    auto_plot_cumulative(
+        input_dict
+    )
+    plt.clf()
+
+    ### specify graph type N_events
+    input_dict['input_2d_hist'] = N_events
+    input_dict['input_type'] = 'N_events'
+    auto_plot_cumulative(
+        input_dict
+    )
+    plt.clf()
+
+    ### specify graph type N_cells
+    input_dict['input_2d_hist'] = N_cells
+    input_dict['input_type'] = 'N_cells'
+    auto_plot_cumulative(
+        input_dict
+    )
+    plt.clf()
+
+    ###### params for control
+    input_dict['focal_cell'] = "wt"
+    input_dict['focal_event'] = "control"
+    input_dict['subject_cell'] = "wt"
+    input_dict['subject_event'] = "div"
+    input_dict['N'] = N_c
+
+    ### specify graph type P_events
+    input_dict['input_2d_hist'] = P_events_c
+    input_dict['input_type'] = 'P_events'
+    auto_plot_cumulative(
+        input_dict
+    )
+    plt.clf()
+
+    ### specify graph type N_events
+    input_dict['input_2d_hist'] = N_events_c
+    input_dict['input_type'] = 'N_events'
+    auto_plot_cumulative(
+        input_dict
+    )
+    plt.clf()
+
+    ### specify graph type N_cells
+    input_dict['input_2d_hist'] = N_cells_c
+    input_dict['input_type'] = 'N_cells'
+    auto_plot_cumulative(
+        input_dict
+    )
+    plt.clf()
+
+    ###################### plot with cbar_lim ##################################
+    input_dict['cbar_lim'] = tuple((0, max(np.amax(P_events_c), np.amax(P_events))))
+
+    ### make output dir
+    input_dict['save_parent_dir'] = os.path.join(save_parent_dir, "cbar_lim")
+    if not os.path.exists(input_dict['save_parent_dir']):
+        os.makedirs(input_dict['save_parent_dir'])
+
+    ### params for canon
+    input_dict['focal_cell'] = "Scr"
+    input_dict['focal_event'] = "apop"
+    input_dict['subject_cell'] = "wt"
+    input_dict['subject_event'] = "div"
+    input_dict['N'] = N
+
+    ### specify graph type P_events
+    input_dict['input_2d_hist'] = P_events
+    input_dict['input_type'] = 'P_events'
+    auto_plot_cumulative(
+        input_dict
+    )
+    plt.clf()
+
+    ###### params for control
+    input_dict['focal_cell'] = "wt"
+    input_dict['focal_event'] = "control"
+    input_dict['subject_cell'] = "wt"
+    input_dict['subject_event'] = "div"
+    input_dict['N'] = N_c
+
+    ### specify graph type P_events
+    input_dict['input_2d_hist'] = P_events_c
+    input_dict['input_type'] = 'P_events'
+    auto_plot_cumulative(
+        input_dict
+    )
+    plt.clf()
+
+    ### reset previous params
+    input_dict['cbar_lim'] = False
+
+    ######################## plot with crop ########################
+    input_dict['include_apop_bin'] = False
+
+    ### make output dir
+    input_dict['save_parent_dir'] = os.path.join(save_parent_dir, "crop")
+    if not os.path.exists(input_dict['save_parent_dir']):
+        os.makedirs(input_dict['save_parent_dir'])
+
+    ### params for canon
+    input_dict['focal_cell'] = "Scr"
+    input_dict['focal_event'] = "apop"
+    input_dict['subject_cell'] = "wt"
+    input_dict['subject_event'] = "div"
+    input_dict['N'] = N
+
+    ### specify graph type P_events
+    input_dict['input_2d_hist'] = P_events
+    input_dict['input_type'] = 'P_events'
+    auto_plot_cumulative(
+        input_dict
+    )
+    plt.clf()
+
+    ###### params for control
+    input_dict['focal_cell'] = "wt"
+    input_dict['focal_event'] = "control"
+    input_dict['subject_cell'] = "wt"
+    input_dict['subject_event'] = "div"
+    input_dict['N'] = N_c
+
+    ### specify graph type P_events
+    input_dict['input_2d_hist'] = P_events_c
+    input_dict['input_type'] = 'P_events'
+    auto_plot_cumulative(
+        input_dict
+    )
+    plt.clf()
+
+    ### reset previous params
+    input_dict['include_apop_bin'] = True
+
+    ##################### plot with cbar lim crop #####################
+    input_dict['cbar_lim'] = tuple((0, max(np.amax(P_events_c), np.amax(P_events))))
+    input_dict['include_apop_bin'] = False
+
+    ### make output dir
+    input_dict['save_parent_dir'] = os.path.join(save_parent_dir, "cbar_lim_crop")
+    if not os.path.exists(input_dict['save_parent_dir']):
+        os.makedirs(input_dict['save_parent_dir'])
+
+    ### params for canon
+    input_dict['focal_cell'] = "Scr"
+    input_dict['focal_event'] = "apop"
+    input_dict['subject_cell'] = "wt"
+    input_dict['subject_event'] = "div"
+    input_dict['N'] = N
+
+    ### specify graph type P_eventsve(
+    input_dict['input_2d_hist'] = P_events
+    input_dict['input_type'] = 'P_events'
+    auto_plot_cumulative(
+        input_dict
+    )
+    plt.clf()
+
+    ###### params for control
+    input_dict['focal_cell'] = "wt"
+    input_dict['focal_event'] = "control"
+    input_dict['subject_cell'] = "wt"
+    input_dict['subject_event'] = "div"
+    input_dict['N'] = N_c
+
+    ### specify graph type P_events
+    input_dict['input_2d_hist'] = P_events_c
+    input_dict['input_type'] = 'P_events'
+    auto_plot_cumulative(
+        input_dict
+    )
+    plt.clf()
+
+    ### reset previous params
+    input_dict['include_apop_bin'] = True
+    input_dict['cbar_lim'] = False
+
+    ########################### coeff var ##########################
+
+    ### make output dir
+    input_dict['save_parent_dir'] = os.path.join(save_parent_dir, "CV")
+    if not os.path.exists(input_dict['save_parent_dir']):
+        os.makedirs(input_dict['save_parent_dir'])
+
+    #### calculate canon CV
+    cv = np.nan_to_num(np.sqrt((1 - P_events) / (P_events * N_cells)), posinf=1)
+
+    ### params for canon
+    input_dict['focal_cell'] = "Scr"
+    input_dict['focal_event'] = "apop"
+    input_dict['subject_cell'] = "wt"
+    input_dict['subject_event'] = "div"
+    input_dict['N'] = N
+
+    ### specify graph type cv
+    input_dict['input_2d_hist'] = cv
+    input_dict['input_type'] = 'CV'
+    auto_plot_cumulative(
+        input_dict
+    )
+    plt.clf()
+
+    ###### calculate control CV
+    cv_c = np.nan_to_num(np.sqrt((1 - P_events_c) / (P_events_c * N_cells_c)), posinf=1)
+
+    ###### params for control
+    input_dict['focal_cell'] = "wt"
+    input_dict['focal_event'] = "control"
+    input_dict['subject_cell'] = "wt"
+    input_dict['subject_event'] = "div"
+    input_dict['N'] = N_c
+
+    ### specify graph type cv_c
+    input_dict['input_2d_hist'] = cv_c
+    input_dict['input_type'] = 'CV'
+    auto_plot_cumulative(
+        input_dict
+    )
+    plt.clf()
+
+    ### combined coeff var
+
+    stat_rel = calculate.stat_relevance_calc(input_dict['num_bins'], P_events, P_events_c, cv, cv_c)
+
+    ### params for canon - necessary here?
+    input_dict['focal_cell'] = "Scr"
+    input_dict['focal_event'] = "apop"
+    input_dict['subject_cell'] = "wt"
+    input_dict['subject_event'] = "div"
+    input_dict['N'] = N
+
+    ### specify graph type stat_rel
+    input_dict['input_2d_hist'] = stat_rel
+    input_dict['input_type'] = 'stat_rel'
+    auto_plot_cumulative(
+        input_dict
+    )
+    plt.clf()
+
+    ########################## combined plot ##########################
+
+    ### make output dir
+    input_dict['save_parent_dir'] = os.path.join(save_parent_dir, "combined")
+    if not os.path.exists(input_dict['save_parent_dir']):
+        os.makedirs(input_dict['save_parent_dir'])
+
+    ### calculate dP
+    dP_events = P_events - P_events_c
+
+    ### params for canon - necessary here?
+    input_dict['focal_cell'] = "Scr"
+    input_dict['focal_event'] = "apop"
+    input_dict['subject_cell'] = "wt"
+    input_dict['subject_event'] = "div"
+    input_dict['N'] = N
+
+    ### specify graph type stat_rel
+    input_dict['input_2d_hist'] = dP_events
+    input_dict['input_type'] = 'dP'
+    auto_plot_cumulative(
+        input_dict
+    )
+    plt.clf()
+
+    ########################## LABELLED PLOTS #############################
+    print("Saving out labelled plots\n\n")
+    input_dict['bin_labels'] = True
+    save_parent_dir = os.path.join(save_parent_dir, 'labelled')
+
+
+    ### make output dir
+    input_dict['save_parent_dir'] = os.path.join(save_parent_dir, "uncrop_unlim")
+    if not os.path.exists(input_dict['save_parent_dir']):
+        os.makedirs(input_dict['save_parent_dir'])
+
+    ### params for canon
+    input_dict['focal_cell'] = "Scr"
+    input_dict['focal_event'] = "apop"
+    input_dict['subject_cell'] = "wt"
+    input_dict['subject_event'] = "div"
+    input_dict['N'] = N
+
+    ### specify graph type P_events
+    input_dict['input_2d_hist'] = P_events
+    input_dict['input_type'] = 'P_events'
+    auto_plot_cumulative(
+        input_dict
+    )
+    plt.clf()
+
+    ### specify graph type N_events
+    input_dict['input_2d_hist'] = N_events
+    input_dict['input_type'] = 'N_events'
+    auto_plot_cumulative(
+        input_dict
+    )
+    plt.clf()
+
+    ### specify graph type N_cells
+    input_dict['input_2d_hist'] = N_cells
+    input_dict['input_type'] = 'N_cells'
+    auto_plot_cumulative(
+        input_dict
+    )
+    plt.clf()
+
+    ###### params for control
+    input_dict['focal_cell'] = "wt"
+    input_dict['focal_event'] = "control"
+    input_dict['subject_cell'] = "wt"
+    input_dict['subject_event'] = "div"
+    input_dict['N'] = N_c
+
+    ### specify graph type P_events
+    input_dict['input_2d_hist'] = P_events_c
+    input_dict['input_type'] = 'P_events'
+    auto_plot_cumulative(
+        input_dict
+    )
+    plt.clf()
+
+    ### specify graph type N_events
+    input_dict['input_2d_hist'] = N_events_c
+    input_dict['input_type'] = 'N_events'
+    auto_plot_cumulative(
+        input_dict
+    )
+    plt.clf()
+
+    ### specify graph type N_cells
+    input_dict['input_2d_hist'] = N_cells_c
+    input_dict['input_type'] = 'N_cells'
+    auto_plot_cumulative(
+        input_dict
+    )
+    plt.clf()
+
+    ###################### plot with cbar_lim ##################################
+    input_dict['cbar_lim'] = tuple((0, max(np.amax(P_events_c), np.amax(P_events))))
+
+    ### make output dir
+    input_dict['save_parent_dir'] = os.path.join(save_parent_dir, "cbar_lim")
+    if not os.path.exists(input_dict['save_parent_dir']):
+        os.makedirs(input_dict['save_parent_dir'])
+
+    ### params for canon
+    input_dict['focal_cell'] = "Scr"
+    input_dict['focal_event'] = "apop"
+    input_dict['subject_cell'] = "wt"
+    input_dict['subject_event'] = "div"
+    input_dict['N'] = N
+
+    ### specify graph type P_events
+    input_dict['input_2d_hist'] = P_events
+    input_dict['input_type'] = 'P_events'
+    auto_plot_cumulative(
+        input_dict
+    )
+    plt.clf()
+
+    ###### params for control
+    input_dict['focal_cell'] = "wt"
+    input_dict['focal_event'] = "control"
+    input_dict['subject_cell'] = "wt"
+    input_dict['subject_event'] = "div"
+    input_dict['N'] = N_c
+
+    ### specify graph type P_events
+    input_dict['input_2d_hist'] = P_events_c
+    input_dict['input_type'] = 'P_events'
+    auto_plot_cumulative(
+        input_dict
+    )
+    plt.clf()
+
+    ### reset previous params
+    input_dict['cbar_lim'] = False
+
+    ######################## plot with crop ########################
+    input_dict['include_apop_bin'] = False
+
+    ### make output dir
+    input_dict['save_parent_dir'] = os.path.join(save_parent_dir, "crop")
+    if not os.path.exists(input_dict['save_parent_dir']):
+        os.makedirs(input_dict['save_parent_dir'])
+
+    ### params for canon
+    input_dict['focal_cell'] = "Scr"
+    input_dict['focal_event'] = "apop"
+    input_dict['subject_cell'] = "wt"
+    input_dict['subject_event'] = "div"
+    input_dict['N'] = N
+
+    ### specify graph type P_events
+    input_dict['input_2d_hist'] = P_events
+    input_dict['input_type'] = 'P_events'
+    auto_plot_cumulative(
+        input_dict
+    )
+    plt.clf()
+
+    ###### params for control
+    input_dict['focal_cell'] = "wt"
+    input_dict['focal_event'] = "control"
+    input_dict['subject_cell'] = "wt"
+    input_dict['subject_event'] = "div"
+    input_dict['N'] = N_c
+
+    ### specify graph type P_events
+    input_dict['input_2d_hist'] = P_events_c
+    input_dict['input_type'] = 'P_events'
+    auto_plot_cumulative(
+        input_dict
+    )
+    plt.clf()
+
+    ### reset previous params
+    input_dict['include_apop_bin'] = True
+
+    ##################### plot with cbar lim crop #####################
+    input_dict['cbar_lim'] = tuple((0, max(np.amax(P_events_c), np.amax(P_events))))
+    input_dict['include_apop_bin'] = False
+
+    ### make output dir
+    input_dict['save_parent_dir'] = os.path.join(save_parent_dir, "cbar_lim_crop")
+    if not os.path.exists(input_dict['save_parent_dir']):
+        os.makedirs(input_dict['save_parent_dir'])
+
+    ### params for canon
+    input_dict['focal_cell'] = "Scr"
+    input_dict['focal_event'] = "apop"
+    input_dict['subject_cell'] = "wt"
+    input_dict['subject_event'] = "div"
+    input_dict['N'] = N
+
+    ### specify graph type P_events
+    input_dict['input_2d_hist'] = P_events
+    input_dict['input_type'] = 'P_events'
+    auto_plot_cumulative(
+        input_dict
+    )
+    plt.clf()
+
+    ###### params for control
+    input_dict['focal_cell'] = "wt"
+    input_dict['focal_event'] = "control"
+    input_dict['subject_cell'] = "wt"
+    input_dict['subject_event'] = "div"
+    input_dict['N'] = N_c
+
+    ### specify graph type P_events
+    input_dict['input_2d_hist'] = P_events_c
+    input_dict['input_type'] = 'P_events'
+    auto_plot_cumulative(
+        input_dict
+    )
+    plt.clf()
+
+    ### reset previous params
+    input_dict['include_apop_bin'] = True
+    input_dict['cbar_lim'] = False
+
+    ########################### coeff var ##########################
+
+    ### make output dir
+    input_dict['save_parent_dir'] = os.path.join(save_parent_dir, "CV")
+    if not os.path.exists(input_dict['save_parent_dir']):
+        os.makedirs(input_dict['save_parent_dir'])
+
+    #### calculate canon CV
+    cv = np.nan_to_num(np.sqrt((1 - P_events) / (P_events * N_cells)), posinf=1)
+
+    ### params for canon
+    input_dict['focal_cell'] = "Scr"
+    input_dict['focal_event'] = "apop"
+    input_dict['subject_cell'] = "wt"
+    input_dict['subject_event'] = "div"
+    input_dict['N'] = N
+
+    ### specify graph type cv
+    input_dict['input_2d_hist'] = cv
+    input_dict['input_type'] = 'CV'
+    auto_plot_cumulative(
+        input_dict
+    )
+    plt.clf()
+
+    ###### calculate control CV
+    cv_c = np.nan_to_num(np.sqrt((1 - P_events_c) / (P_events_c * N_cells_c)), posinf=1)
+
+    ###### params for control
+    input_dict['focal_cell'] = "wt"
+    input_dict['focal_event'] = "control"
+    input_dict['subject_cell'] = "wt"
+    input_dict['subject_event'] = "div"
+    input_dict['N'] = N_c
+
+    ### specify graph type cv_c
+    input_dict['input_2d_hist'] = cv_c
+    input_dict['input_type'] = 'CV'
+    auto_plot_cumulative(
+        input_dict
+    )
+    plt.clf()
+
+    ### combined coeff var
+
+    stat_rel = calculate.stat_relevance_calc(input_dict['num_bins'], P_events, P_events_c, cv, cv_c)
+
+    ### params for canon - necessary here?
+    input_dict['focal_cell'] = "Scr"
+    input_dict['focal_event'] = "apop"
+    input_dict['subject_cell'] = "wt"
+    input_dict['subject_event'] = "div"
+    input_dict['N'] = N
+
+    ### specify graph type stat_rel
+    input_dict['input_2d_hist'] = stat_rel
+    input_dict['input_type'] = 'stat_rel'
+    auto_plot_cumulative(
+        input_dict
+    )
+    plt.clf()
+
+    ########################## combined plot ##########################
+
+    ### make output dir
+    input_dict['save_parent_dir'] = os.path.join(save_parent_dir, "combined")
+    if not os.path.exists(input_dict['save_parent_dir']):
+        os.makedirs(input_dict['save_parent_dir'])
+
+    ### calculate dP
+    dP_events = P_events - P_events_c
+
+    ### params for canon - necessary here?
+    input_dict['focal_cell'] = "Scr"
+    input_dict['focal_event'] = "apop"
+    input_dict['subject_cell'] = "wt"
+    input_dict['subject_event'] = "div"
+    input_dict['N'] = N
+
+    ### specify graph type stat_rel
+    input_dict['input_2d_hist'] = dP_events
+    input_dict['input_type'] = 'dP'
+    auto_plot_cumulative(
+        input_dict
+    )
+    plt.clf()
+    return print("Plots saved out")
+
+
+def auto_plot_cumulative_old(
     input_2d_hist,
     input_type,
     N,
@@ -694,781 +1574,6 @@ def auto_plot_cumulative(
         plt.savefig(fn, dpi=300, bbox_inches="tight")
         print("Plot saved at ", fn)
         return plt.imshow(final_hist)
-
-
-def MEGAPLOT(
-    N_cells,
-    N_events,
-    P_events,
-    N_cells_c,
-    N_events_c,
-    P_events_c,
-    N,
-    N_c,
-    limit,
-    limit_c,
-    cbar_lim,
-    radius,
-    t_range,
-    num_bins,
-    save_parent_dir,
-):
-
-    #### MEGAPLOT
-    print("Thank you for choosing MEGAPLOT\n\n")
-    ###### canon ### plot without cbar lim
-    save_dir = os.path.join(save_parent_dir, "uncrop_unlim")
-    focal_cell = "Scr"
-    focal_event = "apop"
-    subject_cell = "wt"
-    subject_event = "div"
-    plt.clf()
-    auto_plot_cumulative(
-        P_events,
-        "P_events",
-        N,
-        num_bins,
-        radius,
-        t_range,
-        focal_cell,
-        focal_event,
-        subject_cell,
-        subject_event,
-        save_dir,
-        "",  # cbar_lim = (0, 0.002),
-        include_apop_bin=True,
-        bin_labels=False,
-        SI=True,
-    )
-    plt.clf()
-    auto_plot_cumulative(
-        N_events,
-        "N_events",
-        N,
-        num_bins,
-        radius,
-        t_range,
-        focal_cell,
-        focal_event,
-        subject_cell,
-        subject_event,
-        save_dir,
-        "",  # cbar_lim = (0, 0.002),
-        include_apop_bin=True,
-        bin_labels=False,
-        SI=True,
-    )
-    plt.clf()
-    auto_plot_cumulative(
-        N_cells,
-        "N_cells",
-        N,
-        num_bins,
-        radius,
-        t_range,
-        focal_cell,
-        focal_event,
-        subject_cell,
-        subject_event,
-        save_dir,
-        "",  # cbar_lim = (0, 0.002),
-        include_apop_bin=True,
-        bin_labels=False,
-        SI=True,
-    )
-    plt.clf()
-    ###### control ### plot without cbar lim
-    focal_cell = "wt"
-    focal_event = "control"
-    subject_cell = "wt"
-    subject_event = "div"
-    plt.clf()
-    auto_plot_cumulative(
-        P_events_c,
-        "P_events",
-        N_c,
-        num_bins,
-        radius,
-        t_range,
-        focal_cell,
-        focal_event,
-        subject_cell,
-        subject_event,
-        save_dir,
-        "",  # cbar_lim = (0, 0.002),
-        include_apop_bin=True,
-        bin_labels=False,
-        SI=True,
-    )
-    plt.clf()
-    auto_plot_cumulative(
-        N_events_c,
-        "N_events",
-        N_c,
-        num_bins,
-        radius,
-        t_range,
-        focal_cell,
-        focal_event,
-        subject_cell,
-        subject_event,
-        save_dir,
-        "",  # cbar_lim = (0, 0.002),
-        include_apop_bin=True,
-        bin_labels=False,
-        SI=True,
-    )
-    plt.clf()
-    auto_plot_cumulative(
-        N_cells_c,
-        "N_cells",
-        N_c,
-        num_bins,
-        radius,
-        t_range,
-        focal_cell,
-        focal_event,
-        subject_cell,
-        subject_event,
-        save_dir,
-        "",  # cbar_lim = (0, 0.002),
-        include_apop_bin=True,
-        bin_labels=False,
-        SI=True,
-    )
-    plt.clf()
-
-    ### plot with cbar_lim
-    save_dir = os.path.join(save_parent_dir, "cbar_lim")
-    if not os.path.exists(save_dir):
-        os.makedirs(save_dir)
-    ###### canon ### plot with cbar_lim
-    focal_cell = "Scr"
-    focal_event = "apop"
-    subject_cell = "wt"
-    subject_event = "div"
-    plt.clf()
-    auto_plot_cumulative(
-        P_events,
-        "P_events",
-        N,
-        num_bins,
-        radius,
-        t_range,
-        focal_cell,
-        focal_event,
-        subject_cell,
-        subject_event,
-        save_dir,
-        cbar_lim,
-        include_apop_bin=True,
-        bin_labels=False,
-        SI=True,
-    )
-
-    ###### control ### plot with cbar_lim
-    focal_cell = "wt"
-    focal_event = "control"
-    subject_cell = "wt"
-    subject_event = "div"
-    plt.clf()
-    auto_plot_cumulative(
-        P_events_c,
-        "P_events",
-        N_c,
-        num_bins,
-        radius,
-        t_range,
-        focal_cell,
-        focal_event,
-        subject_cell,
-        subject_event,
-        save_dir,
-        cbar_lim,
-        include_apop_bin=True,
-        bin_labels=False,
-        SI=True,
-    )
-
-    ### plot with crop
-    save_dir = os.path.join(save_parent_dir, "crop")
-    if not os.path.exists(save_dir):
-        os.makedirs(save_dir)
-    ###### canon ### plot with crop
-    focal_cell = "Scr"
-    focal_event = "apop"
-    subject_cell = "wt"
-    subject_event = "div"
-    plt.clf()
-    auto_plot_cumulative(
-        P_events,
-        "P_events",
-        N,
-        num_bins,
-        radius,
-        t_range,
-        focal_cell,
-        focal_event,
-        subject_cell,
-        subject_event,
-        save_dir,
-        "",  # cbar_lim = (0, 0.002),
-        include_apop_bin=False,
-        bin_labels=False,
-        SI=True,
-    )
-
-    ###### control ### plot with crop
-    focal_cell = "wt"
-    focal_event = "control"
-    subject_cell = "wt"
-    subject_event = "div"
-    plt.clf()
-    auto_plot_cumulative(
-        P_events_c,
-        "P_events",
-        N_c,
-        num_bins,
-        radius,
-        t_range,
-        focal_cell,
-        focal_event,
-        subject_cell,
-        subject_event,
-        save_dir,
-        "",  # cbar_lim = (0, 0.002),
-        include_apop_bin=False,
-        bin_labels=False,
-        SI=True,
-    )
-
-    ### plot with cbar lim crop
-    save_dir = os.path.join(save_parent_dir, "cbar_lim_crop")
-    if not os.path.exists(save_dir):
-        os.makedirs(save_dir)
-    ###### canon ### plot with crop
-    focal_cell = "Scr"
-    focal_event = "apop"
-    subject_cell = "wt"
-    subject_event = "div"
-    plt.clf()
-    auto_plot_cumulative(
-        P_events,
-        "P_events",
-        N,
-        num_bins,
-        radius,
-        t_range,
-        focal_cell,
-        focal_event,
-        subject_cell,
-        subject_event,
-        save_dir,
-        cbar_lim,
-        include_apop_bin=False,
-        bin_labels=False,
-        SI=True,
-    )
-
-    ###### control ### plot with crop
-    focal_cell = "wt"
-    focal_event = "control"
-    subject_cell = "wt"
-    subject_event = "div"
-    plt.clf()
-    auto_plot_cumulative(
-        P_events_c,
-        "P_events",
-        N_c,
-        num_bins,
-        radius,
-        t_range,
-        focal_cell,
-        focal_event,
-        subject_cell,
-        subject_event,
-        save_dir,
-        cbar_lim,
-        include_apop_bin=False,
-        bin_labels=False,
-        SI=True,
-    )
-    ### coeff var?
-    save_dir = os.path.join(save_parent_dir, "CV")
-    if not os.path.exists(save_dir):
-        os.makedirs(save_dir)
-    #### CANON CV
-    cv = np.nan_to_num(np.sqrt((1 - P_events) / (P_events * N_cells)), posinf=1)
-    #######
-    focal_cell = "Scr"
-    focal_event = "apop"
-    subject_cell = "wt"
-    subject_event = "div"
-    plt.clf()
-    auto_plot_cumulative(
-        cv,
-        "CV",
-        N,
-        num_bins,
-        radius,
-        t_range,
-        focal_cell,
-        focal_event,
-        subject_cell,
-        subject_event,
-        save_dir,
-        "",
-        include_apop_bin=True,
-        bin_labels=False,
-        SI=True,
-    )
-    ###### control CV
-    cv_c = np.nan_to_num(np.sqrt((1 - P_events_c) / (P_events_c * N_cells_c)), posinf=1)
-    #####
-    focal_cell = "wt"
-    focal_event = "control"
-    subject_cell = "wt"
-    subject_event = "div"
-    plt.clf()
-    auto_plot_cumulative(
-        cv_c,
-        "CV",
-        N_c,
-        num_bins,
-        radius,
-        t_range,
-        focal_cell,
-        focal_event,
-        subject_cell,
-        subject_event,
-        save_dir,
-        "",
-        include_apop_bin=True,
-        bin_labels=False,
-        SI=True,
-    )
-    ### combined coeff var
-    stat_rel = calculate.stat_relevance_calc(num_bins, P_events, P_events_c, cv, cv_c)
-    plt.clf()
-    auto_plot_cumulative(
-        stat_rel,
-        "stat_rel",
-        N_c,
-        num_bins,
-        radius,
-        t_range,
-        focal_cell,
-        focal_event,
-        subject_cell,
-        subject_event,
-        save_dir,
-        "",
-        include_apop_bin=True,
-        bin_labels=False,
-        SI=True,
-    )
-    ### combined plot
-    save_dir = os.path.join(save_parent_dir, "combined")
-    if not os.path.exists(save_dir):
-        os.makedirs(save_dir)
-    dP_events = P_events - P_events_c
-    plt.clf()
-    auto_plot_cumulative(
-        dP_events,
-        "dP",
-        N_c,
-        num_bins,
-        radius,
-        t_range,
-        focal_cell,
-        focal_event,
-        subject_cell,
-        subject_event,
-        save_dir,
-        "",
-        include_apop_bin=True,
-        bin_labels=False,
-        SI=True,
-    )
-    # if num_bins == 10:
-    print("Saving out labelled plots\n\n")
-    ###### canon ### plot without cbar lim
-    save_dir = os.path.join(save_parent_dir, "labelled_bins", "uncrop_unlim")
-    focal_cell = "Scr"
-    focal_event = "apop"
-    subject_cell = "wt"
-    subject_event = "div"
-    plt.clf()
-    auto_plot_cumulative(
-        P_events,
-        "P_events",
-        N,
-        num_bins,
-        radius,
-        t_range,
-        focal_cell,
-        focal_event,
-        subject_cell,
-        subject_event,
-        save_dir,
-        "",  # cbar_lim = (0, 0.002),
-        include_apop_bin=True,
-        bin_labels=True,
-        SI=True,
-    )
-    plt.clf()
-    auto_plot_cumulative(
-        N_events,
-        "N_events",
-        N,
-        num_bins,
-        radius,
-        t_range,
-        focal_cell,
-        focal_event,
-        subject_cell,
-        subject_event,
-        save_dir,
-        "",  # cbar_lim = (0, 0.002),
-        include_apop_bin=True,
-        bin_labels=True,
-        SI=True,
-    )
-    plt.clf()
-    auto_plot_cumulative(
-        N_cells,
-        "N_cells",
-        N,
-        num_bins,
-        radius,
-        t_range,
-        focal_cell,
-        focal_event,
-        subject_cell,
-        subject_event,
-        save_dir,
-        "",  # cbar_lim = (0, 0.002),
-        include_apop_bin=True,
-        bin_labels=True,
-        SI=True,
-    )
-    plt.clf()
-    ###### control ### plot without cbar lim
-    focal_cell = "wt"
-    focal_event = "control"
-    subject_cell = "wt"
-    subject_event = "div"
-    plt.clf()
-    auto_plot_cumulative(
-        P_events_c,
-        "P_events",
-        N_c,
-        num_bins,
-        radius,
-        t_range,
-        focal_cell,
-        focal_event,
-        subject_cell,
-        subject_event,
-        save_dir,
-        "",  # cbar_lim = (0, 0.002),
-        include_apop_bin=True,
-        bin_labels=True,
-        SI=True,
-    )
-    plt.clf()
-    auto_plot_cumulative(
-        N_events_c,
-        "N_events",
-        N_c,
-        num_bins,
-        radius,
-        t_range,
-        focal_cell,
-        focal_event,
-        subject_cell,
-        subject_event,
-        save_dir,
-        "",  # cbar_lim = (0, 0.002),
-        include_apop_bin=True,
-        bin_labels=True,
-        SI=True,
-    )
-    plt.clf()
-    auto_plot_cumulative(
-        N_cells_c,
-        "N_cells",
-        N_c,
-        num_bins,
-        radius,
-        t_range,
-        focal_cell,
-        focal_event,
-        subject_cell,
-        subject_event,
-        save_dir,
-        "",  # cbar_lim = (0, 0.002),
-        include_apop_bin=True,
-        bin_labels=True,
-        SI=True,
-    )
-    plt.clf()
-
-    ### plot with cbar_lim
-    save_dir = os.path.join(save_parent_dir, "labelled_bins", "cbar_lim")
-    if not os.path.exists(save_dir):
-        os.makedirs(save_dir)
-    ###### canon ### plot with cbar_lim
-    focal_cell = "Scr"
-    focal_event = "apop"
-    subject_cell = "wt"
-    subject_event = "div"
-    plt.clf()
-    auto_plot_cumulative(
-        P_events,
-        "P_events",
-        N,
-        num_bins,
-        radius,
-        t_range,
-        focal_cell,
-        focal_event,
-        subject_cell,
-        subject_event,
-        save_dir,
-        cbar_lim,
-        include_apop_bin=True,
-        bin_labels=True,
-        SI=True,
-    )
-
-    ###### control ### plot with cbar_lim
-    focal_cell = "wt"
-    focal_event = "control"
-    subject_cell = "wt"
-    subject_event = "div"
-    plt.clf()
-    auto_plot_cumulative(
-        P_events_c,
-        "P_events",
-        N_c,
-        num_bins,
-        radius,
-        t_range,
-        focal_cell,
-        focal_event,
-        subject_cell,
-        subject_event,
-        save_dir,
-        cbar_lim,
-        include_apop_bin=True,
-        bin_labels=True,
-        SI=True,
-    )
-
-    ### plot with crop
-    save_dir = os.path.join(save_parent_dir, "labelled_bins", "crop")
-    if not os.path.exists(save_dir):
-        os.makedirs(save_dir)
-    ###### canon ### plot with crop
-    focal_cell = "Scr"
-    focal_event = "apop"
-    subject_cell = "wt"
-    subject_event = "div"
-    plt.clf()
-    auto_plot_cumulative(
-        P_events,
-        "P_events",
-        N,
-        num_bins,
-        radius,
-        t_range,
-        focal_cell,
-        focal_event,
-        subject_cell,
-        subject_event,
-        save_dir,
-        "",  # cbar_lim = (0, 0.002),
-        include_apop_bin=False,
-        bin_labels=True,
-        SI=True,
-    )
-
-    ###### control ### plot with crop
-    focal_cell = "wt"
-    focal_event = "control"
-    subject_cell = "wt"
-    subject_event = "div"
-    plt.clf()
-    auto_plot_cumulative(
-        P_events_c,
-        "P_events",
-        N_c,
-        num_bins,
-        radius,
-        t_range,
-        focal_cell,
-        focal_event,
-        subject_cell,
-        subject_event,
-        save_dir,
-        "",  # cbar_lim = (0, 0.002),
-        include_apop_bin=False,
-        bin_labels=True,
-        SI=True,
-    )
-
-    ### plot with cbar lim crop
-    save_dir = os.path.join(save_parent_dir, "labelled_bins", "cbar_lim_crop")
-    if not os.path.exists(save_dir):
-        os.makedirs(save_dir)
-    ###### canon ### plot with crop
-    focal_cell = "Scr"
-    focal_event = "apop"
-    subject_cell = "wt"
-    subject_event = "div"
-    plt.clf()
-    auto_plot_cumulative(
-        P_events,
-        "P_events",
-        N,
-        num_bins,
-        radius,
-        t_range,
-        focal_cell,
-        focal_event,
-        subject_cell,
-        subject_event,
-        save_dir,
-        cbar_lim,
-        include_apop_bin=False,
-        bin_labels=True,
-        SI=True,
-    )
-
-    ###### control ### plot with crop
-    focal_cell = "wt"
-    focal_event = "control"
-    subject_cell = "wt"
-    subject_event = "div"
-    plt.clf()
-    auto_plot_cumulative(
-        P_events_c,
-        "P_events",
-        N_c,
-        num_bins,
-        radius,
-        t_range,
-        focal_cell,
-        focal_event,
-        subject_cell,
-        subject_event,
-        save_dir,
-        cbar_lim,
-        include_apop_bin=False,
-        bin_labels=True,
-        SI=True,
-    )
-    ### coeff var?
-    save_dir = os.path.join(save_parent_dir, "labelled_bins", "CV")
-    if not os.path.exists(save_dir):
-        os.makedirs(save_dir)
-    #### CANON CV
-    cv = np.nan_to_num(np.sqrt((1 - P_events) / (P_events * N_cells)), posinf=1)
-    #######
-    focal_cell = "Scr"
-    focal_event = "apop"
-    subject_cell = "wt"
-    subject_event = "div"
-    plt.clf()
-    auto_plot_cumulative(
-        cv,
-        "CV",
-        N,
-        num_bins,
-        radius,
-        t_range,
-        focal_cell,
-        focal_event,
-        subject_cell,
-        subject_event,
-        save_dir,
-        "",
-        include_apop_bin=True,
-        bin_labels=True,
-        SI=True,
-    )
-    ###### control CV
-    cv_c = np.nan_to_num(np.sqrt((1 - P_events_c) / (P_events_c * N_cells_c)), posinf=1)
-    #####
-    focal_cell = "wt"
-    focal_event = "control"
-    subject_cell = "wt"
-    subject_event = "div"
-    plt.clf()
-    auto_plot_cumulative(
-        cv_c,
-        "CV",
-        N_c,
-        num_bins,
-        radius,
-        t_range,
-        focal_cell,
-        focal_event,
-        subject_cell,
-        subject_event,
-        save_dir,
-        "",
-        include_apop_bin=True,
-        bin_labels=True,
-        SI=True,
-    )
-    ### combined coeff var NOT FOR LABELLED VERSION
-    stat_rel = calculate.stat_relevance_calc(num_bins, P_events, P_events_c, cv, cv_c)
-    plt.clf()
-    auto_plot_cumulative(
-        stat_rel,
-        "stat_rel",
-        N_c,
-        num_bins,
-        radius,
-        t_range,
-        focal_cell,
-        focal_event,
-        subject_cell,
-        subject_event,
-        save_dir,
-        "",
-        include_apop_bin=True,
-        bin_labels=True,
-        SI=True,
-    )
-    ### combined plot
-    save_dir = os.path.join(save_parent_dir, "labelled_bins", "combined")
-    if not os.path.exists(save_dir):
-        os.makedirs(save_dir)
-    dP_events = P_events - P_events_c
-    plt.clf()
-    auto_plot_cumulative(
-        dP_events,
-        "dP",
-        N_c,
-        num_bins,
-        radius,
-        t_range,
-        focal_cell,
-        focal_event,
-        subject_cell,
-        subject_event,
-        save_dir,
-        "",
-        include_apop_bin=True,
-        bin_labels=True,
-        SI=True,
-    )
-
-    return print("Plots saved out")
-
 
 def plot_cumulative(
     input_2d_hist, num_bins, radius, t_range, title, label, cb_label, save_path, SI
