@@ -48,29 +48,32 @@ def N_cells(subject_cells, target_cell, radius, t_range, focal_time, num_bins):
     )
 
     ### output raw list of cell_ID, distance, in_frame
-    # global raw_parent_dir
-    # raw_parent_dir = input('If you want to save out raw list of cell IDs, distance and frames, enter desired parent directory, else just press enter')
+    global raw_parent_dir
+    raw_parent_dir = input('If you want to save out raw list of cell IDs, distance and frames, enter desired parent directory, else just press enter')
     if raw_parent_dir != "":
         subj_cell_type = "wt" if subject_cells[0].ID > 0 else "Scr"
         target_cell_type = "wt" if target_cell.ID > 0 else "Scr"
         target_cell_ID = str(target_cell.ID)
-        raw_fn = (
-            expt
-            + "_"
-            + position
-            + "_"
-            + target_cell_type
-            + target_cell_ID
-            + "_N_cells_"
-            + subj_cell_type
-            + "_rad_"
-            + str(radius)
-            + "_t_range_"
-            + str(t_range)
-            + "_focal_t_"
-            + str(focal_time)
-            + ".csv"
-        )
+        try:
+            raw_fn = (
+                expt
+                + "_"
+                + position
+                + "_"
+                + target_cell_type
+                + target_cell_ID
+                + "_N_cells_"
+                + subj_cell_type
+                + "_rad_"
+                + str(radius)
+                + "_t_range_"
+                + str(t_range)
+                + "_focal_t_"
+                + str(focal_time)
+                + ".csv"
+                )
+        except:
+            raw_fn = input('Enter filename for raw output (include .csv)')
         raw_path = os.path.join(raw_parent_dir, f"{radius}.{t_range}")
         if not os.path.exists(raw_path):
             os.makedirs(raw_path)
@@ -104,30 +107,32 @@ def N_events(event, subject_cells, target_cell, radius, t_range, focal_time, num
         )
 
         ### output raw list
-        # raw_parent_dir = input('If you want to save out raw list of cell IDs, distance and frames, enter desired parent directory, else just press enter')
+        global raw_parent_dir
+        raw_parent_dir = input('If you want to save out raw list of cell IDs, distance and frames, enter desired parent directory, else just press enter')
         if raw_parent_dir != "":
             subj_cell_type = "wt" if subject_cells[0].ID > 0 else "Scr"
             target_cell_type = "wt" if target_cell.ID > 0 else "Scr"
             target_cell_ID = str(target_cell.ID)
-
-            raw_fn = (
-                expt
-                + "_"
-                + position
-                + "_"
-                + target_cell_type
-                + target_cell_ID
-                + "_N_events_"
-                + subj_cell_type
-                + event[0:3].lower()
-                + "_rad_"
-                + str(radius)
-                + "_t_range_"
-                + str(t_range)
-                + "_focal_t_"
-                + str(focal_time)
-                + ".csv"
-            )
+            try:
+                raw_fn = (
+                    expt
+                    + "_"
+                    + position
+                    + "_"
+                    + target_cell_type
+                    + target_cell_ID
+                    + "_N_cells_"
+                    + subj_cell_type
+                    + "_rad_"
+                    + str(radius)
+                    + "_t_range_"
+                    + str(t_range)
+                    + "_focal_t_"
+                    + str(focal_time)
+                    + ".csv"
+                    )
+            except:
+                raw_fn = input('Enter filename for raw output (include .csv)')
             raw_path = os.path.join(raw_parent_dir, f"{radius}.{t_range}")
             if not os.path.exists(raw_path):
                 os.makedirs(raw_path)
