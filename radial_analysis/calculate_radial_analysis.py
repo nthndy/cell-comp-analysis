@@ -424,6 +424,44 @@ def iterative_control_heatmap_generator(
 
     return cell_count, error_log, success_log
 
+def stat_relevance_calc(num_bins, P_events, P_events_c, cv, cv_c):
+    """
+    Function that takes two probability arrays (canon and control), their associated coefficient of variation and calculates the statistical relevance of each bin
+    """
+    larger_than_array = np.zeros((num_bins, num_bins))
+    sig_dif_array = np.zeros((num_bins, num_bins))
+    for i, row in enumerate(P_events):
+        for j, element in enumerate(row):
+            P_div = P_events[i, j]
+            P_div_control = P_events_c[i, j]
+            if P_div > P_div_control:
+                larger_than_array[i, j] = 1
+                measure1 = P_div * (1 - cv[i, j])
+                measure2 = P_div_control * (1 + cv_c[i, j])
+                if measure1 > measure2:
+                    # print(i,j, 'sig dif')
+                    sig_dif_array[i, j] = 1
+                else:
+                    # print(i,j, 'NOT sig dif')
+                    sig_dif_array[i, j] = 0
+            elif (
+                P_div == P_div_control == 0
+            ):  ### if P_div is zero then that is bc there arent enough events counted and it is not statistically relevant
+                sig_dif_array[i, j] = 0
+            elif P_div < P_div_control:
+                larger_than_array[i, j] = 0
+                measure1 = P_div_control * (1 - cv_c[i, j])
+                measure2 = P_div * (1 + cv[i, j])
+                if measure1 > measure2:
+                    # print(i,j, 'sig dif')
+                    sig_dif_array[i, j] = 1
+                else:
+                    # print(i,j, 'NOT sig dif')
+                    sig_dif_array[i, j] = 0
+    #         else:
+    #             print('Error calculating statistical relevance at index', i,j)
+    return sig_dif_array
+
 
 ## Is the below obselete now???
 def cumulative_division_counter(
@@ -501,42 +539,3 @@ def cumulative_division_counter(
             )
             error_log.append(error_message)
     return cumulative_N_cells_hist, cumulative_N_events_hist, cell_count, error_log
-
-
-def stat_relevance_calc(num_bins, P_events, P_events_c, cv, cv_c):
-    """
-    Function that takes two probability arrays (canon and control), their associated coefficient of variation and calculates the statistical relevance of each bin
-    """
-    larger_than_array = np.zeros((num_bins, num_bins))
-    sig_dif_array = np.zeros((num_bins, num_bins))
-    for i, row in enumerate(P_events):
-        for j, element in enumerate(row):
-            P_div = P_events[i, j]
-            P_div_control = P_events_c[i, j]
-            if P_div > P_div_control:
-                larger_than_array[i, j] = 1
-                measure1 = P_div * (1 - cv[i, j])
-                measure2 = P_div_control * (1 + cv_c[i, j])
-                if measure1 > measure2:
-                    # print(i,j, 'sig dif')
-                    sig_dif_array[i, j] = 1
-                else:
-                    # print(i,j, 'NOT sig dif')
-                    sig_dif_array[i, j] = 0
-            elif (
-                P_div == P_div_control == 0
-            ):  ### if P_div is zero then that is bc there arent enough events counted and it is not statistically relevant
-                sig_dif_array[i, j] = 0
-            elif P_div < P_div_control:
-                larger_than_array[i, j] = 0
-                measure1 = P_div_control * (1 - cv_c[i, j])
-                measure2 = P_div * (1 + cv[i, j])
-                if measure1 > measure2:
-                    # print(i,j, 'sig dif')
-                    sig_dif_array[i, j] = 1
-                else:
-                    # print(i,j, 'NOT sig dif')
-                    sig_dif_array[i, j] = 0
-    #         else:
-    #             print('Error calculating statistical relevance at index', i,j)
-    return sig_dif_array
