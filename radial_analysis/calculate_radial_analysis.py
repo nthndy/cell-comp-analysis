@@ -48,29 +48,32 @@ def N_cells(subject_cells, target_cell, radius, t_range, focal_time, num_bins):
     )
 
     ### output raw list of cell_ID, distance, in_frame
-    # global raw_parent_dir
-    # raw_parent_dir = input('If you want to save out raw list of cell IDs, distance and frames, enter desired parent directory, else just press enter')
+    global raw_parent_dir
+    raw_parent_dir = input('If you want to save out raw list of cell IDs, distance and frames, enter desired parent directory, else just press enter')
     if raw_parent_dir != "":
         subj_cell_type = "wt" if subject_cells[0].ID > 0 else "Scr"
         target_cell_type = "wt" if target_cell.ID > 0 else "Scr"
         target_cell_ID = str(target_cell.ID)
-        raw_fn = (
-            expt
-            + "_"
-            + position
-            + "_"
-            + target_cell_type
-            + target_cell_ID
-            + "_N_cells_"
-            + subj_cell_type
-            + "_rad_"
-            + str(radius)
-            + "_t_range_"
-            + str(t_range)
-            + "_focal_t_"
-            + str(focal_time)
-            + ".csv"
-        )
+        try:
+            raw_fn = (
+                expt
+                + "_"
+                + position
+                + "_"
+                + target_cell_type
+                + target_cell_ID
+                + "_N_cells_"
+                + subj_cell_type
+                + "_rad_"
+                + str(radius)
+                + "_t_range_"
+                + str(t_range)
+                + "_focal_t_"
+                + str(focal_time)
+                + ".csv"
+                )
+        except:
+            raw_fn = input('Enter filename for raw output (include .csv)')
         raw_path = os.path.join(raw_parent_dir, f"{radius}.{t_range}")
         if not os.path.exists(raw_path):
             os.makedirs(raw_path)
@@ -104,30 +107,32 @@ def N_events(event, subject_cells, target_cell, radius, t_range, focal_time, num
         )
 
         ### output raw list
-        # raw_parent_dir = input('If you want to save out raw list of cell IDs, distance and frames, enter desired parent directory, else just press enter')
+        global raw_parent_dir
+        raw_parent_dir = input('If you want to save out raw list of cell IDs, distance and frames, enter desired parent directory, else just press enter')
         if raw_parent_dir != "":
             subj_cell_type = "wt" if subject_cells[0].ID > 0 else "Scr"
             target_cell_type = "wt" if target_cell.ID > 0 else "Scr"
             target_cell_ID = str(target_cell.ID)
-
-            raw_fn = (
-                expt
-                + "_"
-                + position
-                + "_"
-                + target_cell_type
-                + target_cell_ID
-                + "_N_events_"
-                + subj_cell_type
-                + event[0:3].lower()
-                + "_rad_"
-                + str(radius)
-                + "_t_range_"
-                + str(t_range)
-                + "_focal_t_"
-                + str(focal_time)
-                + ".csv"
-            )
+            try:
+                raw_fn = (
+                    expt
+                    + "_"
+                    + position
+                    + "_"
+                    + target_cell_type
+                    + target_cell_ID
+                    + "_N_cells_"
+                    + subj_cell_type
+                    + "_rad_"
+                    + str(radius)
+                    + "_t_range_"
+                    + str(t_range)
+                    + "_focal_t_"
+                    + str(focal_time)
+                    + ".csv"
+                    )
+            except:
+                raw_fn = input('Enter filename for raw output (include .csv)')
             raw_path = os.path.join(raw_parent_dir, f"{radius}.{t_range}")
             if not os.path.exists(raw_path):
                 os.makedirs(raw_path)
@@ -419,6 +424,44 @@ def iterative_control_heatmap_generator(
 
     return cell_count, error_log, success_log
 
+def stat_relevance_calc(num_bins, P_events, P_events_c, cv, cv_c):
+    """
+    Function that takes two probability arrays (canon and control), their associated coefficient of variation and calculates the statistical relevance of each bin
+    """
+    larger_than_array = np.zeros((num_bins, num_bins))
+    sig_dif_array = np.zeros((num_bins, num_bins))
+    for i, row in enumerate(P_events):
+        for j, element in enumerate(row):
+            P_div = P_events[i, j]
+            P_div_control = P_events_c[i, j]
+            if P_div > P_div_control:
+                larger_than_array[i, j] = 1
+                measure1 = P_div * (1 - cv[i, j])
+                measure2 = P_div_control * (1 + cv_c[i, j])
+                if measure1 > measure2:
+                    # print(i,j, 'sig dif')
+                    sig_dif_array[i, j] = 1
+                else:
+                    # print(i,j, 'NOT sig dif')
+                    sig_dif_array[i, j] = 0
+            elif (
+                P_div == P_div_control == 0
+            ):  ### if P_div is zero then that is bc there arent enough events counted and it is not statistically relevant
+                sig_dif_array[i, j] = 0
+            elif P_div < P_div_control:
+                larger_than_array[i, j] = 0
+                measure1 = P_div_control * (1 - cv_c[i, j])
+                measure2 = P_div * (1 + cv[i, j])
+                if measure1 > measure2:
+                    # print(i,j, 'sig dif')
+                    sig_dif_array[i, j] = 1
+                else:
+                    # print(i,j, 'NOT sig dif')
+                    sig_dif_array[i, j] = 0
+    #         else:
+    #             print('Error calculating statistical relevance at index', i,j)
+    return sig_dif_array
+
 
 ## Is the below obselete now???
 def cumulative_division_counter(
@@ -496,42 +539,3 @@ def cumulative_division_counter(
             )
             error_log.append(error_message)
     return cumulative_N_cells_hist, cumulative_N_events_hist, cell_count, error_log
-
-
-def stat_relevance_calc(num_bins, P_events, P_events_c, cv, cv_c):
-    """
-    Function that takes two probability arrays (canon and control), their associated coefficient of variation and calculates the statistical relevance of each bin
-    """
-    larger_than_array = np.zeros((num_bins, num_bins))
-    sig_dif_array = np.zeros((num_bins, num_bins))
-    for i, row in enumerate(P_events):
-        for j, element in enumerate(row):
-            P_div = P_events[i, j]
-            P_div_control = P_events_c[i, j]
-            if P_div > P_div_control:
-                larger_than_array[i, j] = 1
-                measure1 = P_div * (1 - cv[i, j])
-                measure2 = P_div_control * (1 + cv_c[i, j])
-                if measure1 > measure2:
-                    # print(i,j, 'sig dif')
-                    sig_dif_array[i, j] = 1
-                else:
-                    # print(i,j, 'NOT sig dif')
-                    sig_dif_array[i, j] = 0
-            elif (
-                P_div == P_div_control == 0
-            ):  ### if P_div is zero then that is bc there arent enough events counted and it is not statistically relevant
-                sig_dif_array[i, j] = 0
-            elif P_div < P_div_control:
-                larger_than_array[i, j] = 0
-                measure1 = P_div_control * (1 - cv_c[i, j])
-                measure2 = P_div * (1 + cv[i, j])
-                if measure1 > measure2:
-                    # print(i,j, 'sig dif')
-                    sig_dif_array[i, j] = 1
-                else:
-                    # print(i,j, 'NOT sig dif')
-                    sig_dif_array[i, j] = 0
-    #         else:
-    #             print('Error calculating statistical relevance at index', i,j)
-    return sig_dif_array
