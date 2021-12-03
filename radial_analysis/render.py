@@ -428,6 +428,282 @@ def auto_plot_cumulative(
 input_dict
 ):
     plt.clf()
+    # check input has necessary components
+    assert 'input_2d_hist' in input_dict, "No input histogram found!"
+    # check input is correct type
+    if not isinstance(input_dict['input_2d_hist'], np.ndarray):
+        raise ValueError(f"Input heatmap {input_dict['input_2d_hist']}, is not a ndarray")
+    ### read input parameters and data
+    input_2d_hist = input_dict.get('input_2d_hist')
+    # load other params necessary for plotting
+    radius = int(input_dict.get('radius', input('Enter the scan radius')))
+    t_range = int(input_dict.get('t_range', input('Enter the scan time range')))
+
+    ### default to have standard measures
+    SI = input_dict.get('SI', True)
+
+    ### default to read the number of bins from the array shape
+    num_bins = input_dict.get('num_bins', input_2d_hist.shape[0])
+    ### default is to have no cbar_lim
+    cbar_lim = input_dict.get('cbar_lim', False)
+
+    ### set the label frequency according to the num bins
+    label_freq = 4 if num_bins > 20 else 1
+
+    # get correctly spaced labels
+    xlocs, xlabels, ylocs, ylabels = kymo_labels(
+        num_bins, label_freq, radius, t_range, SI
+    )
+
+    # get scan details for labelling
+    # ask for title if you havent specified input type
+    if 'input_type' not in input_dict:
+        title = input('Input the title of your plot')
+        cb_label = input('Input the label for your colorbar')
+        focal_event_name = input_dict.get('focal_event', input('What is the focal event of the radial scan?'))
+        x_axis_label = f"Time since {focal_event_name} "
+        y_axis_label = f"Distance from {focal_event_name} "
+    #else get focal cell etc details or ask for them if not present
+    else:
+        focal_cell_name = input_dict.get('focal_cell', input('What is the focal cell of the radial scan?'))
+        focal_event_name = input_dict.get('focal_event', input('What is the focal event of the radial scan?'))
+        subject_cell_name = input_dict.get('subject_cell', input('What is the subject cell of the radial scan?'))
+        subject_event_name = input_dict.get('subject_event', input('What is the subject event of the radial scan?'))
+        N = int(input_dict.get('N', input('Enter the number of focal events')))
+        # now check which input type is specified
+        if input_dict.get('input_type') == "N_cells":
+            title = f"Spatiotemporal dist. of {subj_cell_name} cells \n around {focal_cell_name} {focal_event_name} (N={N})"
+            cb_label = f"Number of {subj_cell_name} cell apperances"
+
+        elif input_dict.get('input_type') == "N_events":
+            title = f"Spatiotemporal dist. of {subj_cell_name} {subj_event_name} \n around {focal_cell_name} {focal_event_name} (N={N})"
+            cb_label = f"Number of {subj_cell_name} {subj_event_name}"
+
+        elif input_dict.get('input_type') == "P_events":
+            title = f"Spatiotemporal dist. of probability of {subj_cell_name} {subj_event_name} \n around {focal_cell_name} {focal_event_name} (N={N})"
+            cb_label = f"Probability of {subj_cell_name} {subj_event_name}"
+
+        elif input_dict.get('input_type') == "CV":
+            title = f"Coefficient of variation of probability of {subj_cell_name} {subj_event_name} \n around {focal_cell_name} {focal_event_name} (N={N})"
+            cb_label = "Coefficient of variation"
+
+        elif input_dict.get('input_type') == "stat_rel":
+            title = f"Statisticall relevant areas of probability of {subj_cell_name} {subj_event_name} \n around {focal_cell_name} {focal_event_name} (N={N})"
+            cb_label = "Relevant areas are set equal to 1"
+
+        elif input_dict.get('input_type') == "dP":
+            title = f"Difference in probability between \ncanonical and control analysis \ni.e. probability of {subject_event_name} above background"
+            cb_label = "Difference in probability\n above background"
+        else:
+            print('input_type not recognised')
+
+    ## label unit formatting
+    if SI == True:
+        time_unit = "(Hours)"
+        distance_unit = "(Micrometers)"
+    else:
+        time_unit = "(Frames)"
+        distance_unit = "(Pixels)"
+
+    ## plotting
+    font = {"fontname": "Liberation Mono"}
+    plt.xticks(xlocs, xlabels, rotation="vertical", **font)
+    plt.yticks(ylocs, ylabels, **font)
+    plt.xlabel(x_axis_label + time_unit, **font)
+    plt.ylabel(y_axis_label + distance_unit, **font)
+    plt.title(title + "\n", fontweight="bold", **font)
+
+    ### default is to include the apoptotic spatial bin
+    include_apop_bin = input_dict.get('include_apop_bin', True)
+    ## if include_apop_bin is true then the spatial bin containing the apoptotic cell (ie the central spatial bin of the radial scan) will be show in the graph, if false then it is cropped which ends up with a plot showing only the relevant local env not the site of apop (better imo)
+    if include_apop_bin == True:
+        final_hist = np.flipud(input_2d_hist)  ## flip for desired graph orientation
+    else:
+        final_hist = np.flipud(input_2d_hist[1:-1, :])
+
+    ## apop location marker
+    if num_bins == 10:
+        if include_apop_bin == True:
+            plt.scatter(
+                num_bins / 2 - 0.5, num_bins - 0.75, s=20, c="white", marker="v"
+            )
+            plt.text(
+                num_bins + 0.15,
+                num_bins + 1.5,
+                f"{focal_event_name} location \nshown by inverted \nwhite triangle",
+                **font,
+            )
+        else:
+            plt.scatter(
+                num_bins / 2 - 0.5, num_bins - 2 - 0.75, s=20, c="white", marker="v"
+            )
+            plt.text(
+                num_bins + 0.15,
+                num_bins + 1.5 - 2,
+                f"{focal_event_name} location \nshown by inverted \nwhite triangle",
+                **font,
+            )
+    if num_bins == 20:
+        if include_apop_bin == True:
+            plt.scatter(num_bins / 2 - 0.5, num_bins - 0.9, s=20, c="white", marker="v")
+            plt.text(
+                num_bins + 0.3,
+                num_bins + 3.5,
+                f"{focal_event_name} location \nshown by inverted \nwhite triangle",
+                **font,
+            )
+        else:
+            plt.scatter(num_bins / 2 - 0.5, num_bins - 1.8, s=20, c="white", marker="v")
+            plt.text(
+                num_bins + 0.3,
+                num_bins + 2.5,
+                f"{focal_event_name} location \nshown by inverted \nwhite triangle",
+                **font,
+            )
+
+    ### default is to have no cbar_lim
+    cbar_lim = input_dict.get('cbar_lim', False)
+    ## colorbar
+    if cbar_lim == False:
+        if include_apop_bin == False:
+            plt.clim(
+                vmin=np.min(input_2d_hist[1:-1, :]), vmax=np.max(input_2d_hist[1:-1, :])
+            )
+        else:
+            plt.clim(vmin=np.min(input_2d_hist), vmax=np.max(input_2d_hist))
+        cb = plt.colorbar(
+            label=cb_label
+        )  ### matplotlib.cm.ScalarMappable(norm = ???cmap='PiYG'), use this in conjunction with norm to set cbar equal to diff piyg coloourscheme
+        ax = cb.ax
+        text = ax.yaxis.label
+        font = matplotlib.font_manager.FontProperties(family="Liberation Mono")
+        text.set_font_properties(font)
+        ax.set_yticklabels(
+            np.round(ax.get_yticks(), 5), **{"fontname": "Liberation Mono"}
+        )  ### cropped to 5dp
+    else:
+        cbar_lim = input_dict['cbar_lim']
+        plt.clim(vmin=cbar_lim[0], vmax=cbar_lim[1])
+        cb = plt.colorbar(label=cb_label)
+        ax = cb.ax
+        text = ax.yaxis.label
+        font = matplotlib.font_manager.FontProperties(family="Liberation Mono")
+        text.set_font_properties(font)
+        ax.set_yticklabels(
+            np.round(ax.get_yticks(), 5), **{"fontname": "Liberation Mono"}
+        )
+
+    ### default to have no bin labels
+    bin_labels = input_dict.get('bin_labels', False)
+    ## bin labels
+    if bin_labels == True:
+        flipped = np.flipud(input_2d_hist)
+        if input_type == "P_events":
+            for i in range(len(input_2d_hist)):
+                for j in range(len(input_2d_hist)):
+                    text = plt.text(
+                        j,
+                        i,
+                        round(flipped[i, j], 5),
+                        ha="center",
+                        va="center",
+                        color="w",
+                        fontsize="xx-small",
+                    )
+        elif input_type == "dP":
+            for i in range(len(input_2d_hist)):
+                for j in range(len(input_2d_hist)):
+                    text = plt.text(
+                        j,
+                        i,
+                        round(flipped[i, j], 6),
+                        ha="center",
+                        va="center",
+                        color="w",
+                        fontsize="xx-small",
+                    )
+        elif input_type == "CV":
+            for i in range(len(input_2d_hist)):
+                for j in range(len(input_2d_hist)):
+                    text = plt.text(
+                        j,
+                        i,
+                        round(flipped[i, j], 3),
+                        ha="center",
+                        va="center",
+                        color="w",
+                        fontsize="xx-small",
+                    )
+        if input_type == "stat_rel":
+            for i in range(len(input_2d_hist)):
+                for j in range(len(input_2d_hist)):
+                    text = plt.text(
+                        j,
+                        i,
+                        int(flipped[i, j]),
+                        ha="center",
+                        va="center",
+                        color="w",
+                        fontsize="xx-small",
+                    )
+        else:
+            for i in range(len(input_2d_hist)):
+                for j in range(len(input_2d_hist)):
+                    text = plt.text(
+                        j,
+                        i,
+                        int(flipped[i, j]),
+                        ha="center",
+                        va="center",
+                        color="w",
+                        fontsize="xx-small",
+                    )
+    ## save out?
+    if 'save_parent_dir' not in input_dict:
+        plt.imshow(final_hist)
+        return   # ,cmap = 'PiYG')
+    else:
+        ## output save path formatting
+        save_parent_dir = input_dict['save_parent_dir']
+        save_dir_name = "{}_{}_{}_{}".format(
+            focal_cell.lower(),
+            focal_event.lower()[0:3]
+            if focal_event == "DIVISION"
+            else focal_event.lower()[0:4],
+            subject_cell.lower(),
+            subject_event.lower()[0:3]
+            if subject_event == "DIVISION"
+            else subject_event.lower()[0:4],
+        )
+        save_path = os.path.join(save_parent_dir, save_dir_name)
+        # if (
+        #     not input_type == "dP"
+        # ):  ### combined type does not require segregated folders for canon control
+        Path(save_path).mkdir(parents=True, exist_ok=True)
+
+        ## filename
+        fn = save_path + "/" + title + f" {radius}.{t_range}.{num_bins}.pdf"
+        ## failsafe overwriting block
+        if os.path.exists(fn):
+            print("Filename", fn, "already exists, saving as updated copy")
+            fn = fn.replace(
+                ".pdf", " (updated {}).pdf".format(time.strftime("%Y%m%d-%H%M%S"))
+            )
+        plt.imshow(final_hist)
+        plt.plot()
+        plt.savefig(fn, dpi=300, bbox_inches="tight")
+        print("Plot saved at ", fn)
+
+        return plt.imshow(final_hist)
+
+def auto_plot_cumulative_legacy(
+    input_dict
+    ):
+    """
+    Older version without manual entry options
+    """
+
+    plt.clf()
     ### read input parameters and data
     input_2d_hist = input_dict['input_2d_hist']
     input_type = input_dict['input_type']

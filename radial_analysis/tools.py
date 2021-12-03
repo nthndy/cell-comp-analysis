@@ -185,3 +185,8 @@ def event_counter(event, subject_cells, target_cell, radius, t_range, focal_time
         return print(
             'Event type not recognised, please try again with either "apoptosis" or "divide"'
         )
+
+def quality_counter():
+    """
+    WIP, want to measure other qualities as well as divisions or apoptoses
+    """
