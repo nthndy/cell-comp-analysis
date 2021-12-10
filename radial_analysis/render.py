@@ -43,8 +43,311 @@ from tqdm.notebook import tnrange, tqdm, tqdm_notebook
 Graph rendering below
 
 This section takes the final output of my radial analysis and renders the relevant graphs and labels
+
+Two main components to this file, The first is a newer class-based method of plotting that I am testing. The second is the old function based way.
 """
 
+class Heatmap:
+    def __init__(self, array, radius, t_range,
+                 **scan_details):
+        # the actual array to be plotted
+        self.array = array
+        # various components of the array that are necessary for plotting
+        self.radius = radius
+        self.t_range = t_range
+        self.num_bins = array.shape[0]
+        # optional dict input of scan details (like old plot method)
+        self.scan_details = scan_details
+
+    def xy_labels(self, label_freq: int = 1, SI:bool = True):
+        radial_bin = self.radius / self.num_bins
+        temporal_bin = self.t_range / self.num_bins
+
+        if SI == True:
+            time_scale_factor = 4 / 60  ## each frame is 4 minutes
+            distance_scale_factor = 1 / 3  ## each pixel is 0.3recur micrometers
+        else:
+            time_scale_factor, distance_scale_factor = 1, 1
+
+        ### generate labels for axis micrometers/hours
+        xlocs = np.arange(
+            -0.5, self.num_bins, label_freq
+        )  ## -0.5 to start at far left border of first bin
+        xlabels = []
+        for m in np.arange(int(-self.num_bins / 2), int(self.num_bins / 2) + 1, label_freq):
+            xlabels.append(
+                str(int(((temporal_bin) * m) * time_scale_factor))
+            )  # + "," + str(int(((temporal_bin)*m+temporal_bin)*time_scale_factor)))
+
+        ylocs = np.arange(
+            -0.5, self.num_bins, label_freq
+        )  ## -0.5 to start at far top border of first bin
+        ylabels = []
+        for m in np.arange(self.num_bins, 0 - 1, -label_freq):
+            ylabels.append(
+                str(int(((radial_bin) * m) * distance_scale_factor))
+            )  # + "," + str(int(((radial_bin)*(m-1)*distance_scale_factor))))
+
+        self.xlocs = xlocs
+        self.xlabels = xlabels
+        self.ylocs = ylocs
+        self.ylabels = ylabels
+
+        return xlocs, xlabels, ylocs, ylabels
+
+    def plot_titles(self, SI: bool = True):
+        # if all the details arent present in input details then manually enter
+        if {'focal_cell', 'focal_event', 'input_type', 'N', 'subject_cell', 'subject_event'} != self.scan_details.keys():
+            title = input('Input the title of your plot')
+            cb_label = input('Input the label for your colorbar')
+            focal_event_name = input('What is the focal event of the radial scan?')
+            x_axis_label = f"Time since {focal_event_name} "
+            y_axis_label = f"Distance from {focal_event_name} "
+        #else get focal cell etc details from dict input
+        else:
+            focal_cell_name = self.scan_details.get('focal_cell')#, input('What is the focal cell of the radial scan?'))
+            focal_event_name = self.scan_details.get('focal_event')#, input('What is the focal event of the radial scan?'))
+            subject_cell_name = self.scan_details.get('subject_cell')#, input('What is the subject cell of the radial scan?'))
+            subject_event_name = self.scan_details.get('subject_event')#, input('What is the subject event of the radial scan?'))
+            N = int(self.scan_details.get('N'))#, input('Enter the number of focal events')))
+            # now check which input type is specified
+            if self.scan_details.get('input_type') == "N_cells":
+                title = f"Spatiotemporal dist. of {subject_cell_name} cells \n around {focal_cell_name} {focal_event_name} (N={N})"
+                cb_label = f"Number of {subject_cell_name} cell apperances"
+
+            elif self.scan_details.get('input_type') == "N_events":
+                title = f"Spatiotemporal dist. of {subject_cell_name} {subject_event_name} \n around {focal_cell_name} {focal_event_name} (N={N})"
+                cb_label = f"Number of {subject_cell_name} {subject_event_name}"
+
+            elif self.scan_details.get('input_type') == "P_events":
+                title = f"Spatiotemporal dist. of probability of {subject_cell_name} {subject_event_name} \n around {focal_cell_name} {focal_event_name} (N={N})"
+                cb_label = f"Probability of {subject_cell_name} {subject_event_name}"
+
+            elif self.scan_details.get('input_type') == "CV":
+                title = f"Coefficient of variation of probability of {subject_cell_name} {subject_event_name} \n around {focal_cell_name} {focal_event_name} (N={N})"
+                cb_label = "Coefficient of variation"
+
+            elif self.scan_details.get('input_type') == "stat_rel":
+                title = f"Statisticall relevant areas of probability of {subject_cell_name} {subject_event_name} \n around {focal_cell_name} {focal_event_name} (N={N})"
+                cb_label = "Relevant areas are set equal to 1"
+
+            elif self.scan_details.get('input_type') == "dP":
+                title = f"Difference in probability between \ncanonical and control analysis \ni.e. probability of {subject_event_name} above background"
+                cb_label = "Difference in probability\n above background"
+            else:
+                print('input_type not recognised')
+        if SI == True:
+            time_unit = "(Hours)"
+            distance_unit = "(Micrometers)"
+        else:
+            time_unit = "(Frames)"
+            distance_unit = "(Pixels)"
+
+        x_axis_label = f"Time since {focal_event_name} {time_unit}"
+        y_axis_label = f"Distance from {focal_event_name} {distance_unit}"
+
+        ## is this correct usage here? dont think so but im in too deep to stop now!!!
+        self.title = title
+        self.cb_label = cb_label
+        self.x_axis_label = x_axis_label
+        self.y_axis_label = y_axis_label
+        self.distance_unit = distance_unit
+        self.time_unit = time_unit
+        self.focal_event_name = focal_event_name
+
+        return title, cb_label, x_axis_label, y_axis_label
+
+    def render_plot(self, fontname: str = "Liberation Mono", include_apop_bin: bool = True, cbar_lim = False, bin_labels:bool = False, output_path: str = None):
+        #import matplotlib
+        import matplotlib.font_manager
+        import matplotlib.pyplot as plt
+
+        ## call the labels and title functions
+        self.xy_labels()
+        #xy_labels
+        self.plot_titles()
+
+        #begin plotting
+        plt.clf()
+        font = {"fontname": fontname}
+        plt.xticks(self.xlocs, self.xlabels, rotation="vertical", **font)
+        plt.yticks(self.ylocs, self.ylabels, **font)
+        plt.xlabel(self.x_axis_label, **font)
+        plt.ylabel(self.y_axis_label, **font)
+        plt.title(self.title + "\n", fontweight="bold", **font)
+
+        # crop heatmap if defined so in redner plot funct options
+        final_hist = np.flipud(self.array) if include_apop_bin == True else np.flipud(self.array[1:-1, :])
+
+        ## apop location marker
+        if self.num_bins == 10:
+            if include_apop_bin == True:
+                plt.scatter(
+                self.num_bins / 2 - 0.5, self.num_bins - 0.75, s=20, c="white", marker="v"
+            )
+                plt.text(
+                    self.num_bins + 0.15,
+                    self.num_bins + 1.5,
+                    f"{self.focal_event_name} location \nshown by inverted \nwhite triangle",
+                    **font,
+                )
+            else:
+                plt.scatter(
+                    self.num_bins / 2 - 0.5, self.num_bins - 2 - 0.75, s=20, c="white", marker="v"
+                )
+                plt.text(
+                    self.num_bins + 0.15,
+                    self.num_bins + 1.5 - 2,
+                    f"{self.focal_event_name} location \nshown by inverted \nwhite triangle",
+                    **font,
+                )
+        if self.num_bins == 20:
+            if include_apop_bin == True:
+                plt.scatter(self.num_bins / 2 - 0.5, self.num_bins - 0.9, s=20, c="white", marker="v")
+                plt.text(
+                    self.num_bins + 0.3,
+                    self.num_bins + 3.5,
+                    f"{self.focal_event_name} location \nshown by inverted \nwhite triangle",
+                    **font,
+                )
+            else:
+                plt.scatter(self.num_bins / 2 - 0.5, self.num_bins - 1.8, s=20, c="white", marker="v")
+                plt.text(
+                    self.num_bins + 0.3,
+                    self.num_bins + 2.5,
+                    f"{self.focal_event_name} location \nshown by inverted \nwhite triangle",
+                    **font,
+                )
+
+        ## colorbar
+        if cbar_lim == False:
+            if include_apop_bin == False:
+                plt.clim(
+                    vmin=np.min(self.array[1:, :]), vmax=np.max(self.array[1:, :])
+                )
+            else:
+                plt.clim(vmin=np.min(self.array), vmax=np.max(self.array))
+            cb = plt.colorbar(
+                label=self.cb_label
+            )  ### matplotlib.cm.ScalarMappable(norm = ???cmap='PiYG'), use this in conjunction with norm to set cbar equal to diff piyg coloourscheme
+            ax = cb.ax
+            text = ax.yaxis.label
+            font = matplotlib.font_manager.FontProperties(family=fontname)
+            text.set_font_properties(font)
+            ax.set_yticklabels(
+                np.round(ax.get_yticks(), 5), **{"fontname":fontname}
+            )  ### cropped to 5dp
+        else:
+            # manual input of cbar lim as tuple
+            plt.clim(vmin=cbar_lim[0], vmax=cbar_lim[1])
+            cb = plt.colorbar(label=self.cb_label)
+            ax = cb.ax
+            text = ax.yaxis.label
+            font = matplotlib.font_manager.FontProperties(family=fontname)
+            text.set_font_properties(font)
+            ax.set_yticklabels(
+                np.round(ax.get_yticks(), 5), **{"fontname": fontname}
+            )
+
+        ## bin labels
+        if bin_labels == True:
+            flipped = np.flipud(self.array)
+            if self.scan_details.get('input_type') == "P_events":
+                for i in range(len(input_2d_hist)):
+                    for j in range(len(input_2d_hist)):
+                        text = plt.text(
+                            j,
+                            i,
+                            round(flipped[i, j], 5),
+                            ha="center",
+                            va="center",
+                            color="w",
+                            fontsize="xx-small",
+                        )
+            elif self.scan_details.get('input_type') == "dP":
+                for i in range(len(input_2d_hist)):
+                    for j in range(len(input_2d_hist)):
+                        text = plt.text(
+                            j,
+                            i,
+                            round(flipped[i, j], 6),
+                            ha="center",
+                            va="center",
+                            color="w",
+                            fontsize="xx-small",
+                        )
+            elif self.scan_details.get('input_type') == "CV":
+                for i in range(len(input_2d_hist)):
+                    for j in range(len(input_2d_hist)):
+                        text = plt.text(
+                            j,
+                            i,
+                            round(flipped[i, j], 3),
+                            ha="center",
+                            va="center",
+                            color="w",
+                            fontsize="xx-small",
+                        )
+            if self.scan_details.get('input_type') == "stat_rel":
+                for i in range(len(input_2d_hist)):
+                    for j in range(len(input_2d_hist)):
+                        text = plt.text(
+                            j,
+                            i,
+                            int(flipped[i, j]),
+                            ha="center",
+                            va="center",
+                            color="w",
+                            fontsize="xx-small",
+                        )
+            else:
+                for i in range(len(input_2d_hist)):
+                    for j in range(len(input_2d_hist)):
+                        text = plt.text(
+                            j,
+                            i,
+                            int(flipped[i, j]),
+                            ha="center",
+                            va="center",
+                            color="w",
+                            fontsize="xx-small",
+                        )
+        ## save out?
+        if not output_path:
+            plt.imshow(final_hist)
+            return   # ,cmap = 'PiYG')
+        else:
+            ## output save path formatting
+            save_parent_dir = output_path
+            if {'focal_cell', 'focal_event', 'input_type', 'N', 'subject_cell', 'subject_event'} != self.scan_details.keys():
+                print('No automatic sub directory made for plot as no scan details found')
+                save_path = save_parent_dir
+            else:
+                save_dir_name = "{}_{}_{}_{}".format(
+                    self.scan_details.get('focal_cell').lower(),
+                    self.scan_details.get('focal_event').lower(),
+                    self.scan_details.get('subject_cell').lower(),
+                    self.scan_details.get('subject_event').lower()
+                )
+                save_path = os.path.join(save_parent_dir, save_dir_name)
+
+            # create output dir
+            Path(save_path).mkdir(parents=True, exist_ok=True)
+
+            ## filename
+            fn = save_path + "/" + self.title + f" {self.radius}.{self.t_range}.{self.num_bins}.pdf"
+            ## failsafe overwriting block
+            if os.path.exists(fn):
+                print("Filename", fn, "already exists, saving as updated copy")
+                fn = fn.replace(
+                    ".pdf", " (updated {}).pdf".format(time.strftime("%Y%m%d-%H%M%S"))
+                )
+            plt.imshow(final_hist)
+            plt.plot()
+            plt.savefig(fn, dpi=300, bbox_inches="tight")
+            print("Plot saved at ", fn)
+
+            return plt.imshow(final_hist)
 
 def cumulative_kymo_compiler(raw_files_dir, radius, t_range, num_bins):
     """
@@ -519,7 +822,7 @@ input_dict
     if include_apop_bin == True:
         final_hist = np.flipud(input_2d_hist)  ## flip for desired graph orientation
     else:
-        final_hist = np.flipud(input_2d_hist[1:-1, :])
+        final_hist = np.flipud(input_2d_hist[1:, :])
 
     ## apop location marker
     if num_bins == 10:
