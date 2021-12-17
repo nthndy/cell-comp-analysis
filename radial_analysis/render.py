@@ -42,9 +42,11 @@ from tqdm.notebook import tnrange, tqdm, tqdm_notebook
 """
 Graph rendering below
 
-This section takes the final output of my radial analysis and renders the relevant graphs and labels
+This section takes the final output of my radial analysis
+and renders the relevant graphs and labels
 
-Two main components to this file, The first is a newer class-based method of plotting that I am testing. The second is the old function based way.
+Two main components to this file, The first is a newer
+class-based method of plotting that I am testing. The second is the old function based way.
 """
 
 class Heatmap:
