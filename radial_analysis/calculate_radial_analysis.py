@@ -25,7 +25,7 @@ import re
 import dataio
 import numpy as np
 import tools
-from tqdm import tqdm
+from tqdm.auto import tqdm
 
 
 def N_cells(subject_cells, target_cell, radius, t_range, focal_time, num_bins):
@@ -49,7 +49,9 @@ def N_cells(subject_cells, target_cell, radius, t_range, focal_time, num_bins):
 
     ### output raw list of cell_ID, distance, in_frame
     global raw_parent_dir
-    raw_parent_dir = input('If you want to save out raw list of cell IDs, distance and frames, enter desired parent directory, else just press enter')
+    ## checking if raw parent directory already exists
+    if not raw_parent_dir:
+        raw_parent_dir = input('If you want to save out raw list of cell IDs, distance and frames, enter desired parent directory, else just press enter')
     if raw_parent_dir != "":
         subj_cell_type = "wt" if subject_cells[0].ID > 0 else "Scr"
         target_cell_type = "wt" if target_cell.ID > 0 else "Scr"
@@ -108,7 +110,8 @@ def N_events(event, subject_cells, target_cell, radius, t_range, focal_time, num
 
         ### output raw list
         global raw_parent_dir
-        raw_parent_dir = input('If you want to save out raw list of cell IDs, distance and frames, enter desired parent directory, else just press enter')
+        if not raw_parent_dir:
+            raw_parent_dir = input('If you want to save out raw list of cell IDs, distance and frames, enter desired parent directory, else just press enter')
         if raw_parent_dir != "":
             subj_cell_type = "wt" if subject_cells[0].ID > 0 else "Scr"
             target_cell_type = "wt" if target_cell.ID > 0 else "Scr"
@@ -141,8 +144,62 @@ def N_events(event, subject_cells, target_cell, radius, t_range, focal_time, num
                     item = str(item)
                     f.write("%s\n" % item)
 
-    if event == "APOPTOSIS":
-        raise Exception("Apoptosis event counter not configured yet")
+    elif event == "APOPTOSIS":
+        #raise Exception("Apoptosis event counter not configured yet")
+        N_events = tools.event_counter(
+            event, subject_cells, target_cell, radius, t_range, focal_time
+        )
+
+        N_events_distance = [N_events[i][1] for i in range(0, len(N_events))]
+        N_events_time = [N_events[i][2] for i in range(0, len(N_events))]
+
+        time_bin_edges = np.linspace(
+            (-(int(t_range / 2)) + focal_time),
+            (int(t_range / 2) + focal_time),
+            num_bins + 1,
+        )  ## 2dimensionalise
+        distance_bin_edges = np.linspace(0, radius, num_bins + 1)  ## 2dimensionalise
+
+        N_events_hist, x_autolabels, y_autolabels = np.histogram2d(
+            N_events_distance, N_events_time, bins=[distance_bin_edges, time_bin_edges]
+        )
+
+        ### output raw list
+        #global raw_parent_dir
+        if not raw_parent_dir:
+            raw_parent_dir = input('If you want to save out raw list of cell IDs, distance and frames, enter desired parent directory, else just press enter')
+        if raw_parent_dir != "":
+            subj_cell_type = "wt" if subject_cells[0].ID > 0 else "Scr"
+            target_cell_type = "wt" if target_cell.ID > 0 else "Scr"
+            target_cell_ID = str(target_cell.ID)
+            try:
+                raw_fn = (
+                    expt
+                    + "_"
+                    + position
+                    + "_"
+                    + target_cell_type
+                    + target_cell_ID
+                    + "_N_cells_"
+                    + subj_cell_type
+                    + "_rad_"
+                    + str(radius)
+                    + "_t_range_"
+                    + str(t_range)
+                    + "_focal_t_"
+                    + str(focal_time)
+                    + ".csv"
+                    )
+            except:
+                raw_fn = input('Enter filename for raw output (include .csv)')
+            raw_path = os.path.join(raw_parent_dir, f"{radius}.{t_range}")
+            if not os.path.exists(raw_path):
+                os.makedirs(raw_path)
+            with open(os.path.join(raw_path, raw_fn), "w") as f:
+                for item in N_events:
+                    item = str(item)
+                    f.write("%s\n" % item)
+
 
     return N_events_hist
 
