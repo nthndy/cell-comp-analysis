@@ -27,7 +27,7 @@ import re
 
 import btrack
 import numpy as np
-from btrack.utils import import_HDF, import_JSON, tracks_to_napari
+#from btrack.utils import import_HDF, import_JSON, tracks_to_napari
 from tqdm import tqdm
 
 
@@ -37,7 +37,7 @@ def load_tracking_data(tracks_path):
     The wild-type cells will have positive integer IDs and the mutant population will have negative integer IDs
     """
     import btrack
-    from btrack.utils import import_HDF, import_JSON
+    # from btrack.utils import import_HDF, import_JSON
 
     print("Btrack version no.:", btrack.__version__)
 

@@ -34,7 +34,7 @@ import matplotlib.pyplot as plt
 import napari
 import numpy as np
 import tools
-from btrack.utils import import_HDF, import_JSON, tracks_to_napari
+#from btrack.utils import import_HDF, import_JSON, tracks_to_napari
 from natsort import natsorted
 from skimage.io import imread
 from tqdm.notebook import tnrange, tqdm, tqdm_notebook

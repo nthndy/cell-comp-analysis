@@ -124,6 +124,8 @@ def cell_counter(subject_cells, target_cell, radius, t_range, focal_time):
                     )
                 ),
                 (focal_time + delta_t),
+                int(cell.x[cell.t.index(focal_time + delta_t)]),
+                int(cell.y[cell.t.index(focal_time + delta_t)]),
             )
         )
         for delta_t in range(-int(t_range / 2), int(t_range / 2))
@@ -154,6 +156,8 @@ def event_counter(event, subject_cells, target_cell, radius, t_range, focal_time
                     (cell.ID),
                     (round((euc_dist(target_cell, cell, cell.t[-1], focal_time)), 2)),
                     (cell.t[-1]),
+                    int(cell.x[-1]),
+                    int(cell.y[-1]),
                 )
             )
             for cell in subject_cells
@@ -171,6 +175,8 @@ def event_counter(event, subject_cells, target_cell, radius, t_range, focal_time
                     (cell.ID),
                     (round((euc_dist(target_cell, cell, cell.t[-1], focal_time)), 2)),
                     (cell.t[-1]),
+                    int(cell.x[-1]),
+                    int(cell.y[-1]),
                 )
             )  ### this point of division is reliably the last frame of the dividing cell
             for cell in subject_cells
