@@ -44,7 +44,8 @@ def select_target_cell(cell_ID, all_cells, cell_type="Scr"):
 
 def apoptosis_time(target_cell):
     """
-    This function will try and find an apoptosis (defined as three sequential apoptosis classifications from the btrack information) time point.
+    This function will try and find an apoptosis (defined as three sequential
+    apoptosis classifications from the btrack information) time point.
     """
     try:  ## try to find apoptosis time ## replace with chris' definitive definitions of apoptosis?
         if (
@@ -74,7 +75,8 @@ def apoptosis_time(target_cell):
 
 def random_time(target_cell):
     """
-    This will return a random time point in the target cells existence, useful for generating control plots in the latter analysis.
+    This will return a random time point in the target cells existence, useful
+    for generating control plots in the latter analysis.
     """
     focal_time = random.choice(target_cell.t)
     return focal_time
@@ -82,7 +84,11 @@ def random_time(target_cell):
 
 def euc_dist(target_cell, other_cell, frame, focal_time):
     """
-    An important function that calculates the distance between two cells at a given frame in the timelapse microscope movie. If the cell has gone through an apoptosis, it's location will be returned as the apoptosis location. If the cell does not exist at that frame then a `np.inf` distance will be returned.
+    An important function that calculates the distance between two cells at a
+    given frame in the timelapse microscope movie. If the cell has gone through
+    an apoptosis, it's location will be returned as the apoptosis location. If
+    the cell does not exist at that frame then a `np.inf` distance will be
+    returned.
     """
     try:
         if (
@@ -105,7 +111,9 @@ def euc_dist(target_cell, other_cell, frame, focal_time):
 
 def cell_counter(subject_cells, target_cell, radius, t_range, focal_time):
     """
-    Takes a population of subject cells and a single target cell and counts the spatial and temporal distance between each subject cell and the target cell over a specified radius and time range centered around a focal time.
+    Takes a population of subject cells and a single target cell and counts the
+    spatial and temporal distance between each subject cell and the target cell
+    over a specified radius and time range centered around a focal time.
     """
     ## subject should equal wt_cells, scr_cells or all_cells
     focal_index = target_cell.t.index(focal_time)
@@ -138,14 +146,17 @@ def cell_counter(subject_cells, target_cell, radius, t_range, focal_time):
 
 def event_counter(event, subject_cells, target_cell, radius, t_range, focal_time):
     """
-    Similar to the previous function, except this counts cellular events specified by an extra positional argument:
+    Similar to the previous function, except this counts cellular events
+    specified by an extra positional argument:
     "event"
     Where event can either be a string input of `apoptosis` or `divide`.
     """
 
     focal_index = target_cell.t.index(focal_time)
     event = event.upper()
-    ### the issue here is that it assumes mitosis time is the last time frame in a track (accurate) which does not work with apoptosis
+    ### the issue here is that it assumes mitosis time is the last time frame in
+    ### a track (accurate) which does not work with apoptosis, need to test this
+    ### apoptosis_time function fix
     if event == "APOPTOSIS":
         print(
             "Current apoptosis timepoints are inaccurate so proceed with this analysis with caution"
@@ -154,15 +165,15 @@ def event_counter(event, subject_cells, target_cell, radius, t_range, focal_time
             tuple(
                 (
                     (cell.ID),
-                    (round((euc_dist(target_cell, cell, cell.t[-1], focal_time)), 2)),
-                    (cell.t[-1]),
-                    int(cell.x[-1]),
-                    int(cell.y[-1]),
+                    (round((euc_dist(target_cell, cell, apoptosis_time(cell), focal_time)), 2)),
+                    apoptosis_time(cell),
+                    int(cell.x[cell.t.index(apoptosis_time(cell))]),
+                    int(cell.y[cell.t.index(apoptosis_time(cell))]),
                 )
             )
             for cell in subject_cells
-            if euc_dist(target_cell, cell, cell.t[-1], focal_time) < radius
-            and cell.t[-1]
+            if euc_dist(target_cell, cell, apoptosis_time(cell), focal_time) < radius
+            and apoptosis_time(cell) #
             in range(focal_time - int(t_range / 2), focal_time + int(t_range / 2))
             and cell.fate.name == event
             and cell.ID != target_cell.ID
