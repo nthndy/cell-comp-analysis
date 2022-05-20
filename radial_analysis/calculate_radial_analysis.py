@@ -278,8 +278,6 @@ def N_events(event, subject_cells, target_cell, radius, t_range, focal_time, num
                     item = str(item)
                     f.write("%s\n" % item)
 
-    if event == "APOPTOSIS":
-        raise Exception("Apoptosis event counter not configured yet")
 
     if num_bins:
         return N_events_hist
