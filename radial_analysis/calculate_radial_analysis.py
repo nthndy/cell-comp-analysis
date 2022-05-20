@@ -27,65 +27,217 @@ import numpy as np
 import tools
 from tqdm.auto import tqdm
 
+def radial_scan(
+    subject_cells,
+    subject_event,
+    focal_time_dict,
+    tracking_filelist,
+    radius,
+    t_range,
+    raw_list_output,
+    ):
+        """
+        Conduct a quicker version of the radial scan where each scan is saved out as a
+        csv file with events and cell counts listed along with xyt and dt and dR from
+        central focal event
+        """
+
+        hdf5_file_path, error_log, success_log = [], [], []
+        cell_count = 0
+        print(radius, t_range)
+        ### configure raw output
+        global output_path, expt, position, apop_ID
+        output_path = raw_list_output
+        for apop_ID in tqdm(focal_time_dict):
+
+            expt = "GV" + str(re.findall(r"GV(\d+)", apop_ID)[0])
+            position = re.findall(r"Pos(\d+)", apop_ID)[0]
+
+            position = "Pos" + position
+
+            expt_position = os.path.join(
+                expt, position, ""
+            )  ## additional '' here so that / added to end of string
+
+            cell_ID = int((re.findall(r"(\d+)_.FP", apop_ID))[0])
+            print("ID", apop_ID, "experiment:", expt_position)
+
+            # checks if hdf5 file path already loaded to avoid repeat loading
+            if expt_position not in hdf5_file_path:
+                ## load that track data
+                print("Loading", expt_position)
+                hdf5_file_path = [
+                    hdf5_file_path
+                    for hdf5_file_path in tracking_filelist
+                    if expt_position in hdf5_file_path
+                ][0]
+                wt_cells, scr_cells, all_cells = dataio.load_tracking_data(hdf5_file_path)
+                print("Loaded", expt_position)
+
+            if "RFP" in apop_ID:
+                cell_ID = -cell_ID
+
+            focal_time = int(focal_time_dict[apop_ID])
+            try:
+                target_cell = [cell for cell in all_cells if cell.ID == cell_ID][0]
+            except:
+                error_message = apop_ID + " could not find cell_ID"
+                error_log.append(error_message)
+                continue
+            if target_cell.in_frame(focal_time):
+                ## calculate according to subject cell type
+                num_bins = None
+                ### by setting num_bins to None, heatmaps will not be calculated
+                ### and raw lists will just be saved out
+                if subject_cells == "WT":
+                    subject_cells = wt_cells
+                elif subject_cells == "Scr":
+                    subject_cells = scr_cells
+                elif subject_cells == "All":
+                    subject_cells = all_cells
+                else:
+                    raise Exception("Cannot recognise subject cell population (wild-type, scribble or all?)")
+
+                ### count cells and events and save out
+                N_cells_list(
+                    subject_cells,
+                    target_cell,
+                    radius,
+                    t_range,
+                    focal_time,
+                )
+                N_cells_list(
+                    subject_event,
+                    subject_cells,
+                    target_cell,
+                    radius,
+                    t_range,
+                    focal_time,
+                )
+
+                success_message = (
+                    f'{apop_ID} raw lists saved out successfully'
+                )
+                success_log.append(success_message)
+                cell_count += 1
+            else:
+                print("Focal time not in frame")
+                error_message = (
+                    apop_ID
+                    + " apoptosis time t="
+                    + str(focal_time)
+                    + " not in cell range "
+                    + str(range(target_cell.t[0], target_cell.t[-1]))
+                )
+                error_log.append(error_message)
+
+        return cell_count, error_log, success_log
+
+
+def N_cells_list(subject_cells, target_cell, radius, t_range, focal_time):
+    """
+    Count the number of subject cells around a focal target cell and return just
+    the saved out raw list format as a series of csv files
+    """
+    N_cells = tools.cell_counter(
+        subject_cells, target_cell, radius, t_range, focal_time
+    )
+
+    ### output raw list of cell_ID, distance, in_frame
+    global output_path
+    ### if output path isnt empty then format output filename and path and save
+    if output_path != "":
+        subj_cell_type = "wt" if subject_cells[0].ID > 0 else "Scr"
+        target_cell_type = "wt" if target_cell.ID > 0 else "Scr"
+        target_cell_ID = str(target_cell.ID)
+        focal_index = target_cell.t.index(focal_time)
+        target_cell_xy = (int(target_cell.x[focal_index]), int(target_cell.y[focal_index]))
+
+        raw_fn = f'{expt}_{position}_{target_cell_type}_{target_cell_ID}_N_cells_{subj_cell_type}_rad_{radius}_t_range_{t_range}_focal_txy_{focal_time}_{target_cell_xy[0]}_{target_cell_xy[1]}.csv'
+
+        if not os.path.exists(output_path):
+            os.makedirs(output_path)
+        with open(os.path.join(output_path, raw_fn), "w") as f:
+            for item in N_cells:
+                item = str(item)
+                f.write("%s\n" % item)
+    return
+
+def N_events_list(event, subject_cells, target_cell, radius, t_range):
+    """
+    Count the number of subject cell divisions around a focal target cell and
+    return just the saved out raw list format as a series of csv files
+    """
+
+    if event == "DIVIDE":
+
+        N_events = tools.event_counter(
+            event, subject_cells, target_cell, radius, t_range, focal_time
+        )
+
+        ### output raw list
+        global output_path
+        if output_path != "":
+            subj_cell_type = "wt" if subject_cells[0].ID > 0 else "Scr"
+            target_cell_type = "wt" if target_cell.ID > 0 else "Scr"
+            target_cell_ID = str(target_cell.ID)
+            focal_index = target_cell.t.index(focal_time)
+            target_cell_xy = (int(target_cell.x[focal_index]), int(target_cell.y[focal_index]))
+
+            raw_fn = f'{expt}_{position}_{target_cell_type}_{target_cell_ID}_N_events_{subj_cell_type}_rad_{radius}_t_range_{t_range}_focal_txy_{focal_time}_{target_cell_xy[0]}_{target_cell_xy[1]}.csv'
+
+            if not os.path.exists(output_path):
+                os.makedirs(output_path)
+            with open(os.path.join(output_path, raw_fn), "w") as f:
+                for item in N_events:
+                    item = str(item)
+                    f.write("%s\n" % item)
+
+    if event == "APOPTOSIS":
+        raise Exception("Apoptosis event counter not configured yet")
+
+    return
 
 def N_cells(subject_cells, target_cell, radius, t_range, focal_time, num_bins):
 
     N_cells = tools.cell_counter(
         subject_cells, target_cell, radius, t_range, focal_time
     )
-    N_cells_distance = [N_cells[i][1] for i in range(0, len(N_cells))]
-    N_cells_time = [N_cells[i][2] for i in range(0, len(N_cells))]
+    if num_bins:
+        N_cells_distance = [N_cells[i][1] for i in range(0, len(N_cells))]
+        N_cells_time = [N_cells[i][2] for i in range(0, len(N_cells))]
 
-    time_bin_edges = np.linspace(
-        (-(int(t_range / 2)) + focal_time),
-        (int(t_range / 2) + focal_time),
-        num_bins + 1,
-    )  ## 2dimensionalise
-    distance_bin_edges = np.linspace(0, radius, num_bins + 1)  ## 2dimensionalise
+        time_bin_edges = np.linspace(
+            (-(int(t_range / 2)) + focal_time),
+            (int(t_range / 2) + focal_time),
+            num_bins + 1,
+        )  ## 2dimensionalise
+        distance_bin_edges = np.linspace(0, radius, num_bins + 1)  ## 2dimensionalise
 
-    N_cells_hist, x_autolabels, y_autolabels = np.histogram2d(
-        N_cells_distance, N_cells_time, bins=[distance_bin_edges, time_bin_edges]
-    )
+        N_cells_hist, x_autolabels, y_autolabels = np.histogram2d(
+            N_cells_distance, N_cells_time, bins=[distance_bin_edges, time_bin_edges]
+        )
 
     ### output raw list of cell_ID, distance, in_frame
-    global raw_parent_dir
-    ## checking if raw parent directory already exists
-    if not raw_parent_dir:
-        raw_parent_dir = input('If you want to save out raw list of cell IDs, distance and frames, enter desired parent directory, else just press enter')
-    if raw_parent_dir != "":
+    global output_path
+    ### if output path isnt empty then format output filename and path and save
+    if output_path != "":
         subj_cell_type = "wt" if subject_cells[0].ID > 0 else "Scr"
         target_cell_type = "wt" if target_cell.ID > 0 else "Scr"
         target_cell_ID = str(target_cell.ID)
-        try:
-            raw_fn = (
-                expt
-                + "_"
-                + position
-                + "_"
-                + target_cell_type
-                + target_cell_ID
-                + "_N_cells_"
-                + subj_cell_type
-                + "_rad_"
-                + str(radius)
-                + "_t_range_"
-                + str(t_range)
-                + "_focal_t_"
-                + str(focal_time)
-                + ".csv"
-                )
-        except:
-            raw_fn = input('Enter filename for raw output (include .csv)')
-        raw_path = os.path.join(raw_parent_dir, f"{radius}.{t_range}")
-        if not os.path.exists(raw_path):
-            os.makedirs(raw_path)
-        with open(os.path.join(raw_path, raw_fn), "w") as f:
+        focal_index = target_cell.t.index(focal_time)
+        target_cell_xy = (int(target_cell.x[focal_index]), int(target_cell.y[focal_index]))
+
+        raw_fn = f'{expt}_{position}_{target_cell_type}_{target_cell_ID}_N_cells_{subj_cell_type}_rad_{radius}_t_range_{t_range}_focal_txy_{focal_time}_{target_cell_xy[0]}_{target_cell_xy[1]}.csv'
+
+        if not os.path.exists(output_path):
+            os.makedirs(output_path)
+        with open(os.path.join(output_path, raw_fn), "w") as f:
             for item in N_cells:
                 item = str(item)
                 f.write("%s\n" % item)
-
-    return N_cells_hist
-
+    if num_bins:
+        return N_cells_hist
 
 def N_events(event, subject_cells, target_cell, radius, t_range, focal_time, num_bins):
     if event == "DIVIDE":
@@ -93,116 +245,42 @@ def N_events(event, subject_cells, target_cell, radius, t_range, focal_time, num
         N_events = tools.event_counter(
             event, subject_cells, target_cell, radius, t_range, focal_time
         )
+        if num_bins:
+            N_events_distance = [N_events[i][1] for i in range(0, len(N_events))]
+            N_events_time = [N_events[i][2] for i in range(0, len(N_events))]
 
-        N_events_distance = [N_events[i][1] for i in range(0, len(N_events))]
-        N_events_time = [N_events[i][2] for i in range(0, len(N_events))]
+            time_bin_edges = np.linspace(
+                (-(int(t_range / 2)) + focal_time),
+                (int(t_range / 2) + focal_time),
+                num_bins + 1,
+            )  ## 2dimensionalise
+            distance_bin_edges = np.linspace(0, radius, num_bins + 1)  ## 2dimensionalise
 
-        time_bin_edges = np.linspace(
-            (-(int(t_range / 2)) + focal_time),
-            (int(t_range / 2) + focal_time),
-            num_bins + 1,
-        )  ## 2dimensionalise
-        distance_bin_edges = np.linspace(0, radius, num_bins + 1)  ## 2dimensionalise
-
-        N_events_hist, x_autolabels, y_autolabels = np.histogram2d(
-            N_events_distance, N_events_time, bins=[distance_bin_edges, time_bin_edges]
-        )
+            N_events_hist, x_autolabels, y_autolabels = np.histogram2d(
+                N_events_distance, N_events_time, bins=[distance_bin_edges, time_bin_edges]
+            )
 
         ### output raw list
-        global raw_parent_dir
-        if not raw_parent_dir:
-            raw_parent_dir = input('If you want to save out raw list of cell IDs, distance and frames, enter desired parent directory, else just press enter')
-        if raw_parent_dir != "":
+        global output_path
+        if output_path != "":
             subj_cell_type = "wt" if subject_cells[0].ID > 0 else "Scr"
             target_cell_type = "wt" if target_cell.ID > 0 else "Scr"
             target_cell_ID = str(target_cell.ID)
-            try:
-                raw_fn = (
-                    expt
-                    + "_"
-                    + position
-                    + "_"
-                    + target_cell_type
-                    + target_cell_ID
-                    + "_N_cells_"
-                    + subj_cell_type
-                    + "_rad_"
-                    + str(radius)
-                    + "_t_range_"
-                    + str(t_range)
-                    + "_focal_t_"
-                    + str(focal_time)
-                    + ".csv"
-                    )
-            except:
-                raw_fn = input('Enter filename for raw output (include .csv)')
-            raw_path = os.path.join(raw_parent_dir, f"{radius}.{t_range}")
-            if not os.path.exists(raw_path):
-                os.makedirs(raw_path)
-            with open(os.path.join(raw_path, raw_fn), "w") as f:
-                for item in N_events:
-                    item = str(item)
-                    f.write("%s\n" % item)
+            focal_index = target_cell.t.index(focal_time)
+            target_cell_xy = (int(target_cell.x[focal_index]), int(target_cell.y[focal_index]))
 
-    elif event == "APOPTOSIS":
-        #raise Exception("Apoptosis event counter not configured yet")
-        N_events = tools.event_counter(
-            event, subject_cells, target_cell, radius, t_range, focal_time
-        )
+            raw_fn = f'{expt}_{position}_{target_cell_type}_{target_cell_ID}_N_events_{subj_cell_type}_rad_{radius}_t_range_{t_range}_focal_txy_{focal_time}_{target_cell_xy[0]}_{target_cell_xy[1]}.csv'
 
-        N_events_distance = [N_events[i][1] for i in range(0, len(N_events))]
-        N_events_time = [N_events[i][2] for i in range(0, len(N_events))]
-
-        time_bin_edges = np.linspace(
-            (-(int(t_range / 2)) + focal_time),
-            (int(t_range / 2) + focal_time),
-            num_bins + 1,
-        )  ## 2dimensionalise
-        distance_bin_edges = np.linspace(0, radius, num_bins + 1)  ## 2dimensionalise
-
-        N_events_hist, x_autolabels, y_autolabels = np.histogram2d(
-            N_events_distance, N_events_time, bins=[distance_bin_edges, time_bin_edges]
-        )
-
-        ### output raw list
-        #global raw_parent_dir
-        if not raw_parent_dir:
-            raw_parent_dir = input('If you want to save out raw list of cell IDs, distance and frames, enter desired parent directory, else just press enter')
-        if raw_parent_dir != "":
-            subj_cell_type = "wt" if subject_cells[0].ID > 0 else "Scr"
-            target_cell_type = "wt" if target_cell.ID > 0 else "Scr"
-            target_cell_ID = str(target_cell.ID)
-            try:
-                raw_fn = (
-                    expt
-                    + "_"
-                    + position
-                    + "_"
-                    + target_cell_type
-                    + target_cell_ID
-                    + "_N_cells_"
-                    + subj_cell_type
-                    + "_rad_"
-                    + str(radius)
-                    + "_t_range_"
-                    + str(t_range)
-                    + "_focal_t_"
-                    + str(focal_time)
-                    + ".csv"
-                    )
-            except:
-                raw_fn = input('Enter filename for raw output (include .csv)')
-            raw_path = os.path.join(raw_parent_dir, f"{radius}.{t_range}")
-            if not os.path.exists(raw_path):
-                os.makedirs(raw_path)
-            with open(os.path.join(raw_path, raw_fn), "w") as f:
+            if not os.path.exists(output_path):
+                os.makedirs(output_path)
+            with open(os.path.join(output_path, raw_fn), "w") as f:
                 for item in N_events:
                     item = str(item)
                     f.write("%s\n" % item)
 
 
-    return N_events_hist
-
+    if num_bins:
+        return N_events_hist
 
 def P_event(event, subject_cells, target_cell, radius, t_range, focal_time, num_bins):
 
