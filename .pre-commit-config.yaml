@@ -28,11 +28,6 @@ repos:
    -   id: mypy
        args: [--ignore-missing-imports]
 # sort imports
-# -   repo: https://github.com/asottile/seed-isort-config
-#     rev: v2.2.0
-#     hooks:
-#     -   id: seed-isort-config
-# sort imports
 -   repo: https://github.com/pre-commit/mirrors-isort
     rev: v5.4.2
     hooks:
