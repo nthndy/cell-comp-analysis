@@ -28,6 +28,23 @@ import re
 import numpy as np
 from tqdm import tqdm
 
+def focal_xyt_finder(focal_ID, file_list):
+    """
+    Simple function to pull xy coords from correctly formatted radial scan fn
+    """
+    ### need to reformat focal ID to match fn style
+    if 'RFP' in focal_ID:
+        focal_ID = f'{focal_ID.split("_")[0]}_{focal_ID.split("_")[1]}_Scr_-{focal_ID.split("_")[2]}_N'
+    elif 'GFP' in focal_ID:
+        focal_ID = f'{focal_ID.split("_")[0]}_{focal_ID.split("_")[1]}_wt_{focal_ID.split("_")[2]}_N'
+    else:
+        ### this is the scenario where the fn has already been reformatted to have scr or wt in
+        focal_ID = focal_ID + '_N_'
+        ### this reformat needs to happen to bookend the number so for eg id 15 isnt confused with 155
+    focal_fn = [fn for fn in file_list if focal_ID in fn][0]
+    t, x, y = re.findall(r'\d+', focal_fn)[-3:]
+
+    return int(x), int(y), int(t)
 
 def select_target_cell(cell_ID, all_cells, cell_type="Scr"):
     """
@@ -80,6 +97,15 @@ def random_time(target_cell):
     """
     focal_time = random.choice(target_cell.t)
     return focal_time
+
+def basic_euc_dist(x1, y1, x2, y2):
+    """
+    Simplified version of euc_dist that just requires coordinate input
+    """
+    delta_x = x1 - x2
+    delta_y = y1 - y2
+
+    return np.sqrt(delta_x**2+delta_y**2)
 
 
 def euc_dist(target_cell, other_cell, frame, focal_time):

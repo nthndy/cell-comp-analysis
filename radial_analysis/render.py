@@ -49,6 +49,24 @@ Two main components to this file, The first is a newer
 class-based method of plotting that I am testing. The second is the old function based way.
 """
 
+def render_from_df(N_events_df, N_cells_df, bins, t_range, R_max):
+
+    t_min = min(t_range)
+    t_max = max(t_range)
+    N_events_constrained_df = N_events_df.loc[(N_events_df['Time since apoptosis'] >= t_min) & (N_events_df['Time since apoptosis'] <= t_max) & (N_events_df['Distance from apoptosis'] <= R_max)]
+    N_cells_constrained_df = N_cells_df.loc[(N_cells_df['Time since apoptosis'] >= t_min) & (N_cells_df['Time since apoptosis'] <= t_max) & (N_cells_df['Distance from apoptosis'] <= R_max)]
+
+    N_events, xedges, yedges, _ = plt.hist2d(N_events_constrained_df['Time since apoptosis'], N_events_constrained_df['Distance from apoptosis'],
+                      bins=bins, cmap='Blues')
+    plt.clf()
+    N_cells, xedges, yedges, _ = plt.hist2d(N_cells_constrained_df['Time since apoptosis'], N_cells_constrained_df['Distance from apoptosis'],
+                      bins=bins, cmap='Blues')
+    plt.clf()
+
+    P_events = N_events/N_cells
+
+    return P_events, xedges, yedges, N_events, N_cells
+
 class Heatmap:
     def __init__(self, array, radius, t_range,
                  **scan_details):
