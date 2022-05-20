@@ -22,26 +22,21 @@ repos:
     -   id: mixed-line-ending
 #    -   id: check-added-large-files
 #sort imports
-#-   repo: https://github.com/pre-commit/mirrors-mypy
-#    rev: v0.782
-#    hooks:
-#    -   id: mypy
-#        args: [--ignore-missing-imports]
+-  repo: https://github.com/pre-commit/mirrors-mypy
+   rev: v0.782
+   hooks:
+   -   id: mypy
+       args: [--ignore-missing-imports]
 # sort imports
--   repo: https://github.com/asottile/seed-isort-config
-    rev: v2.2.0
+-   repo: https://github.com/pre-commit/mirrors-isort
+    rev: v5.4.2
     hooks:
-    -   id: seed-isort-config
-# sort imports
-# -   repo: https://github.com/pre-commit/mirrors-isort
-#     rev: v5.4.2
-#     hooks:
-#     -   id: isort
+    -   id: isort
 # style guide
-# -   repo: https://github.com/psf/black
-#     rev: 20.8b1
-#     hooks:
-#     -   id: black
+-   repo: https://github.com/psf/black
+    rev: 20.8b1
+    hooks:
+    -   id: black
 # upgrades old-style syntax
 -   repo: https://github.com/asottile/pyupgrade
     rev: v2.7.2

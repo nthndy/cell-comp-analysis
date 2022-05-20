@@ -28,6 +28,23 @@ import re
 import numpy as np
 from tqdm import tqdm
 
+def focal_xyt_finder(focal_ID, file_list):
+    """
+    Simple function to pull xy coords from correctly formatted radial scan fn
+    """
+    ### need to reformat focal ID to match fn style
+    if 'RFP' in focal_ID:
+        focal_ID = f'{focal_ID.split("_")[0]}_{focal_ID.split("_")[1]}_Scr_-{focal_ID.split("_")[2]}_N'
+    elif 'GFP' in focal_ID:
+        focal_ID = f'{focal_ID.split("_")[0]}_{focal_ID.split("_")[1]}_wt_{focal_ID.split("_")[2]}_N'
+    else:
+        ### this is the scenario where the fn has already been reformatted to have scr or wt in
+        focal_ID = focal_ID + '_N_'
+        ### this reformat needs to happen to bookend the number so for eg id 15 isnt confused with 155
+    focal_fn = [fn for fn in file_list if focal_ID in fn][0]
+    t, x, y = re.findall(r'\d+', focal_fn)[-3:]
+
+    return int(x), int(y), int(t)
 
 def select_target_cell(cell_ID, all_cells, cell_type="Scr"):
     """
@@ -44,7 +61,8 @@ def select_target_cell(cell_ID, all_cells, cell_type="Scr"):
 
 def apoptosis_time(target_cell):
     """
-    This function will try and find an apoptosis (defined as three sequential apoptosis classifications from the btrack information) time point.
+    This function will try and find an apoptosis (defined as three sequential
+    apoptosis classifications from the btrack information) time point.
     """
     try:  ## try to find apoptosis time ## replace with chris' definitive definitions of apoptosis?
         if (
@@ -74,15 +92,29 @@ def apoptosis_time(target_cell):
 
 def random_time(target_cell):
     """
-    This will return a random time point in the target cells existence, useful for generating control plots in the latter analysis.
+    This will return a random time point in the target cells existence, useful
+    for generating control plots in the latter analysis.
     """
     focal_time = random.choice(target_cell.t)
     return focal_time
 
+def basic_euc_dist(x1, y1, x2, y2):
+    """
+    Simplified version of euc_dist that just requires coordinate input
+    """
+    delta_x = x1 - x2
+    delta_y = y1 - y2
+
+    return np.sqrt(delta_x**2+delta_y**2)
+
 
 def euc_dist(target_cell, other_cell, frame, focal_time):
     """
-    An important function that calculates the distance between two cells at a given frame in the timelapse microscope movie. If the cell has gone through an apoptosis, it's location will be returned as the apoptosis location. If the cell does not exist at that frame then a `np.inf` distance will be returned.
+    An important function that calculates the distance between two cells at a
+    given frame in the timelapse microscope movie. If the cell has gone through
+    an apoptosis, it's location will be returned as the apoptosis location. If
+    the cell does not exist at that frame then a `np.inf` distance will be
+    returned.
     """
     try:
         if (
@@ -105,7 +137,9 @@ def euc_dist(target_cell, other_cell, frame, focal_time):
 
 def cell_counter(subject_cells, target_cell, radius, t_range, focal_time):
     """
-    Takes a population of subject cells and a single target cell and counts the spatial and temporal distance between each subject cell and the target cell over a specified radius and time range centered around a focal time.
+    Takes a population of subject cells and a single target cell and counts the
+    spatial and temporal distance between each subject cell and the target cell
+    over a specified radius and time range centered around a focal time.
     """
     ## subject should equal wt_cells, scr_cells or all_cells
     focal_index = target_cell.t.index(focal_time)
@@ -124,6 +158,8 @@ def cell_counter(subject_cells, target_cell, radius, t_range, focal_time):
                     )
                 ),
                 (focal_time + delta_t),
+                int(cell.x[cell.t.index(focal_time + delta_t)]),
+                int(cell.y[cell.t.index(focal_time + delta_t)]),
             )
         )
         for delta_t in range(-int(t_range / 2), int(t_range / 2))
@@ -136,14 +172,17 @@ def cell_counter(subject_cells, target_cell, radius, t_range, focal_time):
 
 def event_counter(event, subject_cells, target_cell, radius, t_range, focal_time):
     """
-    Similar to the previous function, except this counts cellular events specified by an extra positional argument:
+    Similar to the previous function, except this counts cellular events
+    specified by an extra positional argument:
     "event"
     Where event can either be a string input of `apoptosis` or `divide`.
     """
 
     focal_index = target_cell.t.index(focal_time)
     event = event.upper()
-    ### the issue here is that it assumes mitosis time is the last time frame in a track (accurate) which does not work with apoptosis
+    ### the issue here is that it assumes mitosis time is the last time frame in
+    ### a track (accurate) which does not work with apoptosis, need to test this
+    ### apoptosis_time function fix
     if event == "APOPTOSIS":
         print(
             "Current apoptosis timepoints are inaccurate so proceed with this analysis with caution"
@@ -152,13 +191,15 @@ def event_counter(event, subject_cells, target_cell, radius, t_range, focal_time
             tuple(
                 (
                     (cell.ID),
-                    (round((euc_dist(target_cell, cell, cell.t[-1], focal_time)), 2)),
-                    (cell.t[-1]),
+                    (round((euc_dist(target_cell, cell, apoptosis_time(cell), focal_time)), 2)),
+                    apoptosis_time(cell),
+                    int(cell.x[cell.t.index(apoptosis_time(cell))]),
+                    int(cell.y[cell.t.index(apoptosis_time(cell))]),
                 )
             )
             for cell in subject_cells
-            if euc_dist(target_cell, cell, cell.t[-1], focal_time) < radius
-            and cell.t[-1]
+            if euc_dist(target_cell, cell, apoptosis_time(cell), focal_time) < radius
+            and apoptosis_time(cell) #
             in range(focal_time - int(t_range / 2), focal_time + int(t_range / 2))
             and cell.fate.name == event
             and cell.ID != target_cell.ID
@@ -171,6 +212,8 @@ def event_counter(event, subject_cells, target_cell, radius, t_range, focal_time
                     (cell.ID),
                     (round((euc_dist(target_cell, cell, cell.t[-1], focal_time)), 2)),
                     (cell.t[-1]),
+                    int(cell.x[-1]),
+                    int(cell.y[-1]),
                 )
             )  ### this point of division is reliably the last frame of the dividing cell
             for cell in subject_cells

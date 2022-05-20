@@ -24,12 +24,313 @@ import json
 import os
 import random
 import re
-
+import pandas as pd
 import btrack
 import numpy as np
-from btrack.utils import import_HDF, import_JSON, tracks_to_napari
-from tqdm import tqdm
+#from btrack.utils import import_HDF, import_JSON, tracks_to_napari
+from tqdm.auto import tqdm
+from tools import basic_euc_dist, focal_xyt_finder
 
+def load_focal_df(focal_ID):
+    """
+    load dataframe with focal cell spatiotemp information in it
+
+    focal_ID : str
+        String with the necessary info to find focal id csv file
+        ie. GV0819_Pos3_Scr_-1735
+    """
+
+    if 'Scr' in focal_ID:
+        focal_ID = focal_ID.replace('Scr_-','')+'_RFP'
+        focal_xyt_fn = os.path.join('/home/nathan/data/kraken/scr/h2b/giulia/experiment_information/apoptoses/apoptotic_tracks',
+                                 f'{focal_ID}.csv')
+    if 'wt' in focal_ID:
+        focal_ID = focal_ID.replace('wt_','')+'_GFP'
+        if 'wt_control_wt_div' in file:
+            focal_xyt_fn = os.path.join('/home/nathan/data/kraken/scr/h2b/giulia/experiment_information/apoptoses/control_event_tracks',
+                                 f'{focal_ID}.csv')
+        if 'wt_apop_wt_div' in file:
+            focal_xyt_fn = os.path.join('/home/nathan/data/kraken/scr/h2b/giulia/experiment_information/apoptoses/apoptotic_tracks',
+                                     f'{focal_ID}.csv')
+    focal_df = pd.read_csv(focal_xyt_fn)
+    del focal_df['Unnamed: 0']
+
+    return focal_df
+
+def convert_csv_to_feather(file_list):
+    """
+    Convert all csv files in file list to the feather format for quicker io of dataframes
+    """
+    ### convert to feather
+    for file in tqdm(file_list):
+        ### apop id
+        apop_ID = file.split('/')[-1].split('_N_')[0]
+        ### if filtering is present but not strict then just exclude time points outside fov
+        apo_t, apo_x, apo_y = [int(re.search(r'txy_(\d+)_(\d+)_(\d+)', file)[i]) for i in range(1,4)]
+        ### load csv
+        df = pd.read_csv(file, names = ['Cell ID', 'Distance from apoptosis', 'Frame', 'x', 'y'])
+        if len(df) == 0:
+            import warnings
+            warnings.warn(f"{file} seems to be an empty file, continuing to next file")
+            continue
+        ### tidy up dataframe
+        df['Cell ID'] = df['Cell ID'].str.replace('[()]', '')
+        df['y'] = df['y'].str.replace('[()]', '')
+        df = df.astype(int)
+        ### normalise time
+        df['Time since apoptosis'] = df['Frame'] - apo_t
+        ### add apop ID to dataframe
+        df['Focal ID'] = [apop_ID] * len(df)
+        ### rename columns to fit with kfunct convention
+        #df.rename(columns={'Distance from apoptosis':'dij', 'Time since apoptosis':'tij'})
+        ### rename and save out as feather
+        new_fn = (file.replace('xyt/1600.1600', 'xyt/feather')).replace('.csv','.feather')
+        df.to_feather(new_fn)
+
+def feather_load_radial_df(single_scan_file_list, maximum_R = None, crop_amount = 10, fixed_apop_location = False, streamline = True, strict_filtering = False, frame_filtering = False):
+
+    """
+    A QUICKER function to load each individual radial analysis scan and concatenate them into a cumulative pandas dataframe.
+    Needs csv to be saved out as binary feather files first
+
+    single_scan_file_list : list of paths
+        A list of .csv/feather files of the individual single-focal-cell radial scans to concatenate together
+
+    maximum_R : int
+        Defines the maximum radius of a focal scan in pixels, if this radius leaves the field of view
+        then that focal apoptosis is either a) excluded from the cumulative scan (if strict_filtering == True)
+        or b) The time points at which is leaves the FOV are excluded (if frame_filtering == True).
+        Currently only really makes a difference for post apoptotic times as cell moves around
+        before apoptosis so could leave the FOV prior to the xy used as a centoid here
+
+    crop_amount : int
+        Defines the cropping amount necessary to exclude boundary effect cells/divisions from
+        the radial scan
+
+    streamlined : bool
+        If True this returns just the distance from apoptosis and time since apoptosis variables
+        in the data frame. If False then it returns data frame as in the .csv file.
+
+    fixed_apop_location : bool
+        If True this changes the distance variable from one that follows the apoptotic cell pre-apop
+        to one that is the distance between the event and the fixed apoptotic location
+
+    strict_filtering : bool
+        This, if True, excludes any focal cells that leave the FOV at any time point by removing those frames from each df
+
+    frame_fitlering : bool
+        if true deletes any frames in the main df that mean a scan of radius r is outside the fov
+
+    """
+
+    radial_scan_df = []
+
+    ### if R is not provided then do not filter any focal apoptoses
+    if not maximum_R:
+        maximum_R = 0
+    ### use R to exclude any focal apoptoses that are out of the FOV at the time of apoptosis
+    x_range = range(maximum_R+crop_amount, 1200 - (maximum_R+crop_amount))
+    y_range = range(maximum_R+crop_amount, 1600 - (maximum_R+crop_amount))
+    ### sometimes only provide one df to this function so list will just be str
+    if type(single_scan_file_list) == str:
+    ### if this is the case make a list of that one fn item
+        single_scan_file_list = [single_scan_file_list]
+
+    for file in tqdm(single_scan_file_list):
+        file = file.replace('scr_apop_wt_div_xyt/1600.1600/', 'scr_apop_wt_div_xyt/feather/')
+        ### get apop id to load apop xyt file
+        apop_ID = file.split('/')[-1].split('_N_')[0]
+        if maximum_R > 0:
+            ### reformat apop ID to fit in previous convention
+            if 'Scr' in apop_ID:
+                apop_ID = apop_ID.replace('Scr_-','')+'_RFP'
+                apo_xyt_fn = os.path.join('/home/nathan/data/kraken/scr/h2b/giulia/experiment_information/apoptoses/apoptotic_tracks',
+                                         f'{apop_ID}.csv')
+            if 'wt' in apop_ID:
+                apop_ID = apop_ID.replace('wt_','')+'_GFP'
+                if 'wt_control_wt_div' in file:
+                    apo_xyt_fn = os.path.join('/home/nathan/data/kraken/scr/h2b/giulia/experiment_information/apoptoses/control_event_tracks',
+                                         f'{apop_ID}.csv')
+                if 'wt_apop_wt_div' in file:
+                    apo_xyt_fn = os.path.join('/home/nathan/data/kraken/scr/h2b/giulia/experiment_information/apoptoses/apoptotic_tracks',
+                                             f'{apop_ID}.csv')
+            apo_df = pd.read_csv(apo_xyt_fn).astype(int)
+            del apo_df['Unnamed: 0']
+            ### see if any of the frames of the focal cell leave the FOV
+            frames_outside_fov = []
+            for apo_x, apo_y, apo_t in zip(apo_df['x'], apo_df['y'], apo_df['t']):
+                if int(apo_x) not in x_range or int(apo_y) not in  y_range:
+                    frames_outside_fov.append(apo_t)
+            #print('Frames outside the FOV for ', apop_ID, frames_outside_fov)
+            ### if filtering is strict then exclude any focal cell that leves fov
+            if strict_filtering == True:
+                if len(frames_outside_fov) > 0:
+                    continue
+        ### if filtering is present but not strict then just exclude time points outside fov
+        apo_t, apo_x, apo_y = [int(re.search(r'txy_(\d+)_(\d+)_(\d+)', file)[i]) for i in range(1,4)]
+        ### load dataframe
+        try:
+            df = pd.read_feather(file)
+        except:
+            print('Not a feather file so loading slower .csv instead')
+            df = pd.read_csv(file)
+        ### eliminate boundary counts spatially
+        df = df.loc[(df['x'] >= crop_amount) & (df['x'] <= 1200-crop_amount) & (df['y'] >= crop_amount) & (df['y'] <= 1600-crop_amount)]
+        ### eliminate boundary effects temporally (ie. if scan exits fov at any time point) by deleting those frames from the scan
+        if frame_filtering and maximum_R > 0:
+            df = df[~df['Frame'].isin(frames_outside_fov)]
+
+        ### other way of cutting down on size of df
+        df = df.loc[(df['Distance from apoptosis'] <= 1600) & (df['Time since apoptosis'] <= 800) & (df['Time since apoptosis'] >= -800)]
+
+        ## convert to SI
+        df['Time since apoptosis'] = df['Time since apoptosis']*(4/60)
+        df['Distance from apoptosis'] = df['Distance from apoptosis']/3
+         ### remove unnecessary data=
+
+        if fixed_apop_location == True:
+            for i, row in df.iterrows():#, total = len(df), desc = 'Switching distance (dij) from following apop. cell to fixed apop. location'):
+                ### only do preapoptotic times as scan if fixed location post apop
+                if row['Time since apoptosis'] < 0:
+                    focal_ID = row['Focal ID']
+                    focal_x, focal_y, focal_t = focal_xyt_finder(focal_ID, single_scan_file_list)
+                    df.at[i, 'Distance from apoptosis'] = basic_euc_dist(row['x'], row['y'], focal_x, focal_y) / 3 ### scaled from pixels to micrometers
+
+        if streamline:
+            del df['x'], df['y'], df['Cell ID'], df['Frame']
+            df = df.round(decimals = 2)
+            df = df.astype({'Distance from apoptosis':'int'})
+
+        ### append to larger df
+        radial_scan_df.append(df)
+
+    radial_scan_df = pd.concat(radial_scan_df, axis = 0, ignore_index = True)
+    N_focal_cells = len(set(radial_scan_df['Focal ID']))
+    print('Number of focal cells included in cumulative scan:', N_focal_cells)
+
+
+    return radial_scan_df
+
+def load_radial_df(single_scan_file_list, maximum_R = None, crop_amount = 20, fixed_apop_location = False, streamline = True, strict_filtering = False, weights = False):
+
+    """
+    A function to load each individual radial analysis scan and concatenate them into a cumulative pandas dataframe.
+
+    single_scan_file_list : list of paths
+        A list of .csv files of the individual single-focal-cell radial scans to concatenate together
+
+    maximum_R : int
+        Defines the maximum radius of a focal scan in pixels, if this radius leaves the field of view
+        then that focal apoptosis is either a) excluded from the cumulative scan (if strict_filtering == True)
+        or b) The time points at which is leaves the FOV are excluded (if R is given but strict_filtering == False).
+        Currently only really makes a difference for post apoptotic times as cell moves around
+        before apoptosis so could leave the FOV prior to the xy used as a centoid here
+
+    crop_amount : int
+        Defines the cropping amount necessary to exclude boundary effect cells/divisions from
+        the radial scan
+
+    streamlined : bool
+        If True this returns just the distance from apoptosis and time since apoptosis variables
+        in the data frame. If False then it returns data frame as in the .csv file.
+
+    fixed_apop_location : bool
+        If True this changes the distance variable from one that follows the apoptotic cell pre-apop
+        to one that is the distance between the event and the fixed apoptotic location
+
+    strict_filtering : bool
+        This, if True, excludes any focal cells that leave the FOV at any time point by removing those frames from each df
+
+    weights : bool
+        This, if True, skips over the previous strict_filtering and leaves all frames in to be weighted
+
+
+    """
+
+    radial_scan_df = []
+    N_focal_cells = 0
+
+    ### if R is not provided then do not filter any focal apoptoses
+    if not maximum_R:
+        maximum_R = 0
+    ### use R to exclude any focal apoptoses that are out of the FOV at the time of apoptosis
+    x_range = range(maximum_R+crop_amount, 1200 - (maximum_R+crop_amount))
+    y_range = range(maximum_R+crop_amount, 1600 - (maximum_R+crop_amount))
+    ### sometimes only provide one df to this function so list will just be str
+    if type(single_scan_file_list) == str:
+    ### if this is the case make a list of that one fn item
+        single_scan_file_list = [single_scan_file_list]
+
+    for file in tqdm(single_scan_file_list):
+        ### get apop id to load apop xyt file
+        apop_ID = file.split('/')[-1].split('_N_')[0]
+        if maximum_R > 0:
+            ### reformat apop ID to fit in previous convention ### load full apo xyt
+            if 'Scr' in apop_ID:
+                apop_ID = apop_ID.replace('Scr_-','')+'_RFP'
+                apo_xyt_fn = os.path.join('/home/nathan/data/kraken/scr/h2b/giulia/experiment_information/apoptoses/apoptotic_tracks',
+                                         f'{apop_ID}.csv')
+            if 'wt' in apop_ID:
+                apop_ID = apop_ID.replace('wt_','')+'_GFP'
+                if 'wt_control_wt_div' in file:
+                    apo_xyt_fn = os.path.join('/home/nathan/data/kraken/scr/h2b/giulia/experiment_information/apoptoses/control_event_tracks',
+                                         f'{apop_ID}.csv')
+                if 'wt_apop_wt_div' in file:
+                    apo_xyt_fn = os.path.join('/home/nathan/data/kraken/scr/h2b/giulia/experiment_information/apoptoses/apoptotic_tracks',
+                                             f'{apop_ID}.csv')
+
+            apo_df = pd.read_csv(apo_xyt_fn).astype(int)
+            del apo_df['Unnamed: 0']
+            ### see if any of the frames of the focal cell leave the FOV
+            frames_outside_fov = []
+            for apo_x, apo_y, apo_t in zip(apo_df['x'], apo_df['y'], apo_df['t']):
+                if int(apo_x) not in x_range or int(apo_y) not in  y_range:
+                    frames_outside_fov.append(apo_t)
+            #print('Frames outside the FOV for ', apop_ID, frames_outside_fov)
+            ### if filtering is strict then exclude any focal cell that leves fov
+            if strict_filtering == True:
+                if len(frames_outside_fov) > 0:
+                    continue
+        ### if filtering is present but not strict then just exclude time points outside fov
+        apo_t, apo_x, apo_y = [int(re.search(r'txy_(\d+)_(\d+)_(\d+)', file)[i]) for i in range(1,4)]
+        ### load dataframe
+        df = pd.read_csv(file, names = ['Cell ID', 'Distance from apoptosis', 'Frame', 'x', 'y'])
+        ### tidy up dataframe
+        df['Cell ID'] = df['Cell ID'].str.replace('[()]', '')
+        df['y'] = df['y'].str.replace('[()]', '')
+        df = df.astype(int)
+        ### normalise time
+        df['Time since apoptosis'] = df['Frame'] - apo_t
+        ### eliminate boundary counts spatially
+        df = df.loc[(df['x'] >= crop_amount) & (df['x'] <= 1200-crop_amount) & (df['y'] >= crop_amount) & (df['y'] <= 1600-crop_amount)]
+        ### eliminate boundary effects temporally (ie. if scan exits fov at any time point) by deleting those frames from the scan
+        if maximum_R > 0 and weights == False:
+            df = df[~df['Frame'].isin(frames_outside_fov)]
+        ### remove unnecessary data
+        if streamline:
+            del df['x'], df['y'], df['Cell ID'], df['Frame']
+        ### add apop ID to dataframe
+        df['Focal ID'] = [apop_ID] * len(df)
+        ### append to larger df
+        radial_scan_df.append(df)
+        N_focal_cells +=1
+    radial_scan_df = pd.concat(radial_scan_df, axis = 0, ignore_index = True)
+    radial_scan_df['Time since apoptosis'] = radial_scan_df['Time since apoptosis']*(4/60)
+    radial_scan_df['Distance from apoptosis'] = radial_scan_df['Distance from apoptosis']/3
+    print('Number of focal cells included in cumulative scan:', N_focal_cells)
+
+    if fixed_apop_location == True:
+        for i, row in tqdm(radial_scan_df.iterrows(), total = len(radial_scan_df), desc = 'Switching distance (dij) from following apop. cell to fixed apop. location'):
+            ### only do preapoptotic times as scan if fixed location post apop
+            if row['Time since apoptosis'] < 0:
+                focal_ID = row['Focal ID']
+                focal_x, focal_y, focal_t = focal_xyt_finder(focal_ID, file_list)
+                radial_scan_df.at[i, 'Distance from apoptosis'] = basic_euc_dist(row['x'], row['y'], focal_x, focal_y) / 3 ### scaled from pixels to micrometers
+
+    if weights:
+        print(frames_outside_fov)
+
+    return radial_scan_df
 
 def load_tracking_data(tracks_path):
     """
@@ -37,7 +338,7 @@ def load_tracking_data(tracks_path):
     The wild-type cells will have positive integer IDs and the mutant population will have negative integer IDs
     """
     import btrack
-    from btrack.utils import import_HDF, import_JSON
+    # from btrack.utils import import_HDF, import_JSON
 
     print("Btrack version no.:", btrack.__version__)
 
