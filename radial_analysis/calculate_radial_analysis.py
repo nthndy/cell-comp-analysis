@@ -27,8 +27,9 @@ import numpy as np
 import tools
 from tqdm.auto import tqdm
 
+
 def radial_scan(
-    subject_cells,
+    subject_cell_type,
     subject_event,
     focal_time_dict,
     tracking_filelist,
@@ -46,21 +47,21 @@ def radial_scan(
         cell_count = 0
         print(radius, t_range)
         ### configure raw output
-        global output_path, expt, position, apop_ID
+        global output_path, expt, position, focal_ID, stationary
         output_path = raw_list_output
-        for apop_ID in tqdm(focal_time_dict):
 
-            expt = "GV" + str(re.findall(r"GV(\d+)", apop_ID)[0])
-            position = re.findall(r"Pos(\d+)", apop_ID)[0]
+        for focal_ID in tqdm(focal_time_dict):
 
-            position = "Pos" + position
-
+            if len(focal_ID.split('_')) <5:
+                expt, position, _, _ = focal_ID.split('_')
+            else:
+                expt, position, _, _, _ =  focal_ID.split('_')
             expt_position = os.path.join(
                 expt, position, ""
             )  ## additional '' here so that / added to end of string
 
-            cell_ID = int((re.findall(r"(\d+)_.FP", apop_ID))[0])
-            print("ID", apop_ID, "experiment:", expt_position)
+            cell_ID = int((re.findall(r"(\d+)_.FP", focal_ID))[0])
+            print("ID", focal_ID, "experiment:", expt_position)
 
             # checks if hdf5 file path already loaded to avoid repeat loading
             if expt_position not in hdf5_file_path:
@@ -71,99 +72,244 @@ def radial_scan(
                     for hdf5_file_path in tracking_filelist
                     if expt_position in hdf5_file_path
                 ][0]
-                wt_cells, scr_cells, all_cells = dataio.load_tracking_data(hdf5_file_path)
+                wt_cells, mut_cells, all_cells = dataio.load_tracking_data(hdf5_file_path)
                 print("Loaded", expt_position)
 
-            if "RFP" in apop_ID:
+            if "RFP" in focal_ID:
                 cell_ID = -cell_ID
 
-            focal_time = int(focal_time_dict[apop_ID])
+            focal_time = int(focal_time_dict[focal_ID])
             try:
-                target_cell = [cell for cell in all_cells if cell.ID == cell_ID][0]
+                focal_cell = [cell for cell in all_cells if cell.ID == cell_ID][0]
             except:
-                error_message = apop_ID + " could not find cell_ID"
+                error_message = focal_ID + " could not find cell_ID"
                 error_log.append(error_message)
                 continue
-            if target_cell.in_frame(focal_time):
+            if focal_cell.in_frame(focal_time):
                 ## calculate according to subject cell type
                 num_bins = None
                 ### by setting num_bins to None, heatmaps will not be calculated
                 ### and raw lists will just be saved out
-                if subject_cells == "WT":
+                if subject_cell_type == "WT":
                     subject_cells = wt_cells
-                elif subject_cells == "Scr":
-                    subject_cells = scr_cells
-                elif subject_cells == "All":
+                elif subject_cell_type == "Scr":
+                    subject_cells = mut_cells
+                elif subject_cell_type == "Ras":
+                    subject_cells = mut_cells
+                elif subject_cell_type == "All":
                     subject_cells = all_cells
                 else:
                     raise Exception("Cannot recognise subject cell population (wild-type, scribble or all?)")
 
+                ### check to see if focal track is fragmented type, if it is then
+                ### conduct scan on fixed location as focal cell is stationary
+                ### prior to the focal time
+                if 'frag' in focal_ID:
+                    stationary = True
+                else:
+                    stationary = False
                 ### count cells and events and save out
                 N_cells_list(
                     subject_cells,
-                    target_cell,
+                    focal_cell,
                     radius,
                     t_range,
                     focal_time,
                 )
-                N_cells_list(
+                N_events_list(
                     subject_event,
                     subject_cells,
-                    target_cell,
+                    focal_cell,
                     radius,
                     t_range,
                     focal_time,
                 )
 
                 success_message = (
-                    f'{apop_ID} raw lists saved out successfully'
+                    f'{focal_ID} raw lists saved out successfully'
                 )
                 success_log.append(success_message)
                 cell_count += 1
             else:
                 print("Focal time not in frame")
                 error_message = (
-                    apop_ID
+                    focal_ID
                     + " apoptosis time t="
                     + str(focal_time)
                     + " not in cell range "
-                    + str(range(target_cell.t[0], target_cell.t[-1]))
+                    + str(range(focal_cell.t[0], focal_cell.t[-1]))
                 )
                 error_log.append(error_message)
 
         return cell_count, error_log, success_log
 
+def control_radial_scan(
+    focal_cell_type,
+    subject_cell_type,
+    subject_event,
+    expt_dict,
+    N_cells_per_expt,
+    tracking_filelist,
+    radius,
+    t_range,
+    raw_list_output,
+    ):
+        """
+        Conduct a quicker version of the CONTROL radial scan where each scan is saved out as a
+        csv file with events and cell counts listed along with xyt and dt and dR from
+        central focal event
+        """
+        import random
+        hdf5_file_path, error_log, success_log = [], [], []
+        cell_count = 0
+        ### configure raw output
+        global output_path, expt, position, focal_ID, stationary
+        output_path = raw_list_output
 
-def N_cells_list(subject_cells, target_cell, radius, t_range, focal_time):
+        for hdf5_file in tqdm(expt_dict):
+            expt = "ND" + str(re.findall(r"ND(\d+)", hdf5_file)[0])
+            position = "Pos" +re.findall(r"Pos(\d+)", hdf5_file)[0]
+
+            expt_position = os.path.join(
+                expt, position, ""
+            )  ## additional '' here so that / added to end of string
+            if expt_position not in hdf5_file_path:
+                ## load that track data
+                print("Loading", expt_position)
+                try:
+                    hdf5_file_path = [
+                        hdf5_file_path
+                        for hdf5_file_path in tracking_filelist
+                        if expt_position in hdf5_file_path
+                    ][0]
+                    wt_cells, mut_cells, all_cells = dataio.load_tracking_data(
+                        hdf5_file_path
+                    )
+                    print("Loaded", expt_position)
+                except:
+                    print(expt_position, "Failed to load HDF5")
+                    error_message = expt_position + " could not load HDF5"
+                    error_log.append(error_message)
+                    continue
+
+                for i in range(N_cells_per_expt):
+                    try:
+                        ## load quasi random cell ID (want to pick a cell that has a long track... or )
+                        if focal_cell_type == "WT":
+                            cells = [
+                                cell for cell in wt_cells if len(cell) > 100
+                            ]  ## >100 eliminates possibility of being false track
+                            focal_cell = random.choice(cells)
+                        elif focal_cells == "mutant":
+                            cells = [
+                                cell for cell in mut_cells if len(cell) > 100
+                            ]  ## >100 eliminates possibility of being false track
+                            focal_cell = random.choice(cells)
+                        elif focal_cells == "All":
+                            cells = [
+                                cell for cell in all_cells if len(cell) > 100
+                            ]  ## >100 eliminates possibility of being false track
+                            focal_cell = random.choice(cells)
+                        else:
+                            print('Focal cell type not recognised')
+
+                        focal_time = random.choice(focal_cell.t)
+
+                        cell_ID = "{}_{}_ID:{}_t:{}".format(
+                            expt, position, focal_cell.ID, focal_time
+                        )
+
+                    except:
+                        error_message = expt_position + " could not load cell_ID"
+                        error_log.append(error_message)
+                        continue
+
+                    ## calculate according to subject cell type
+                    num_bins = None
+                    ### by setting num_bins to None, heatmaps will not be calculated
+                    ### and raw lists will just be saved out
+                    if subject_cell_type == "WT":
+                        subject_cells = wt_cells
+                    elif subject_cell_type == "Scr":
+                        subject_cells = mut_cells
+                    elif subject_cell_type == "Ras":
+                        subject_cells = mut_cells
+                    elif subject_cell_type == "All":
+                        subject_cells = all_cells
+                    else:
+                        raise Exception("Cannot recognise subject cell population (wild-type, scribble or all?)")
+
+                    ### check to see if focal track is fragmented type, if it is then
+                    ### conduct scan on fixed location as focal cell is stationary
+                    ### prior to the focal time
+        #             if 'frag' in focal_ID:
+        #                 stationary = True
+        #             else:
+                    stationary = False
+
+                    print(f'Running radial analyses for {cell_ID}')
+                    ### count cells and events and save out
+                    N_cells_list(
+                        subject_cells,
+                        focal_cell,
+                        radius,
+                        t_range,
+                        focal_time,
+                    )
+                    N_events_list(
+                        subject_event,
+                        subject_cells,
+                        focal_cell,
+                        radius,
+                        t_range,
+                        focal_time,
+                    )
+
+                    success_message = (
+                        f'{cell_ID} raw lists saved out successfully'
+                    )
+                    success_log.append(success_message)
+                    cell_count += 1
+
+
+        return cell_count, error_log, success_log
+
+def N_cells_list(subject_cells, focal_cell, radius, t_range, focal_time):
     """
     Count the number of subject cells around a focal target cell and return just
     the saved out raw list format as a series of csv files
     """
-    N_cells = tools.cell_counter(
-        subject_cells, target_cell, radius, t_range, focal_time
-    )
-
     ### output raw list of cell_ID, distance, in_frame
     global output_path
     ### if output path isnt empty then format output filename and path and save
     if output_path != "":
-        subj_cell_type = "wt" if subject_cells[0].ID > 0 else "Scr"
-        target_cell_type = "wt" if target_cell.ID > 0 else "Scr"
-        target_cell_ID = str(target_cell.ID)
-        focal_index = target_cell.t.index(focal_time)
-        target_cell_xy = (int(target_cell.x[focal_index]), int(target_cell.y[focal_index]))
+        subj_cell_type = "wt" if subject_cells[0].ID > 0 else "mut"
+        focal_cell_type = "wt" if focal_cell.ID > 0 else "mut"
+        focal_cell_ID = str(focal_cell.ID)
+        focal_index = focal_cell.t.index(focal_time)
+        focal_cell_xy = (int(focal_cell.x[focal_index]), int(focal_cell.y[focal_index]))
 
-        raw_fn = f'{expt}_{position}_{target_cell_type}_{target_cell_ID}_N_cells_{subj_cell_type}_rad_{radius}_t_range_{t_range}_focal_txy_{focal_time}_{target_cell_xy[0]}_{target_cell_xy[1]}.csv'
+        raw_fn = f'{expt}_{position}_{focal_cell_type}_{focal_cell_ID}_N_cells_{subj_cell_type}_rad_{radius}_t_range_{t_range}_focal_txy_{focal_time}_{focal_cell_xy[0]}_{focal_cell_xy[1]}.csv'
 
         if not os.path.exists(output_path):
             os.makedirs(output_path)
+
+        if os.path.exists(os.path.join(output_path, raw_fn)):
+            print(os.path.join(output_path, raw_fn), 'already exists, skipping to next focal ID')
+            return
+
+        N_cells = tools.cell_counter(
+            subject_cells, focal_cell, radius, t_range, focal_time, stationary
+        )
+
+
         with open(os.path.join(output_path, raw_fn), "w") as f:
             for item in N_cells:
                 item = str(item)
                 f.write("%s\n" % item)
     return
 
-def N_events_list(event, subject_cells, target_cell, radius, t_range):
+def N_events_list(event, subject_cells, focal_cell, radius, t_range, focal_time):
     """
     Count the number of subject cell divisions around a focal target cell and
     return just the saved out raw list format as a series of csv files
@@ -171,23 +317,29 @@ def N_events_list(event, subject_cells, target_cell, radius, t_range):
 
     if event == "DIVIDE":
 
-        N_events = tools.event_counter(
-            event, subject_cells, target_cell, radius, t_range, focal_time
-        )
 
         ### output raw list
         global output_path
         if output_path != "":
-            subj_cell_type = "wt" if subject_cells[0].ID > 0 else "Scr"
-            target_cell_type = "wt" if target_cell.ID > 0 else "Scr"
-            target_cell_ID = str(target_cell.ID)
-            focal_index = target_cell.t.index(focal_time)
-            target_cell_xy = (int(target_cell.x[focal_index]), int(target_cell.y[focal_index]))
+            subj_cell_type = "wt" if subject_cells[0].ID > 0 else "mut"
+            focal_cell_type = "wt" if focal_cell.ID > 0 else "mut"
+            focal_cell_ID = str(focal_cell.ID)
+            focal_index = focal_cell.t.index(focal_time)
+            focal_cell_xy = (int(focal_cell.x[focal_index]), int(focal_cell.y[focal_index]))
 
-            raw_fn = f'{expt}_{position}_{target_cell_type}_{target_cell_ID}_N_events_{subj_cell_type}_rad_{radius}_t_range_{t_range}_focal_txy_{focal_time}_{target_cell_xy[0]}_{target_cell_xy[1]}.csv'
+            raw_fn = f'{expt}_{position}_{focal_cell_type}_{focal_cell_ID}_N_events_{subj_cell_type}_rad_{radius}_t_range_{t_range}_focal_txy_{focal_time}_{focal_cell_xy[0]}_{focal_cell_xy[1]}.csv'
+
+            if os.path.exists(os.path.join(output_path, raw_fn)):
+                print(os.path.join(output_path, raw_fn), 'already exists, skipping to next focal ID')
+                return
 
             if not os.path.exists(output_path):
                 os.makedirs(output_path)
+
+            N_events = tools.event_counter(
+                event, subject_cells, focal_cell, radius, t_range, focal_time, stationary
+            )
+
             with open(os.path.join(output_path, raw_fn), "w") as f:
                 for item in N_events:
                     item = str(item)
@@ -198,10 +350,10 @@ def N_events_list(event, subject_cells, target_cell, radius, t_range):
 
     return
 
-def N_cells(subject_cells, target_cell, radius, t_range, focal_time, num_bins):
+def N_cells(subject_cells, focal_cell, radius, t_range, focal_time, num_bins):
 
     N_cells = tools.cell_counter(
-        subject_cells, target_cell, radius, t_range, focal_time
+        subject_cells, focal_cell, radius, t_range, focal_time
     )
     if num_bins:
         N_cells_distance = [N_cells[i][1] for i in range(0, len(N_cells))]
@@ -223,12 +375,12 @@ def N_cells(subject_cells, target_cell, radius, t_range, focal_time, num_bins):
     ### if output path isnt empty then format output filename and path and save
     if output_path != "":
         subj_cell_type = "wt" if subject_cells[0].ID > 0 else "Scr"
-        target_cell_type = "wt" if target_cell.ID > 0 else "Scr"
-        target_cell_ID = str(target_cell.ID)
-        focal_index = target_cell.t.index(focal_time)
-        target_cell_xy = (int(target_cell.x[focal_index]), int(target_cell.y[focal_index]))
+        focal_cell_type = "wt" if focal_cell.ID > 0 else "Scr"
+        focal_cell_ID = str(focal_cell.ID)
+        focal_index = focal_cell.t.index(focal_time)
+        focal_cell_xy = (int(focal_cell.x[focal_index]), int(focal_cell.y[focal_index]))
 
-        raw_fn = f'{expt}_{position}_{target_cell_type}_{target_cell_ID}_N_cells_{subj_cell_type}_rad_{radius}_t_range_{t_range}_focal_txy_{focal_time}_{target_cell_xy[0]}_{target_cell_xy[1]}.csv'
+        raw_fn = f'{expt}_{position}_{focal_cell_type}_{focal_cell_ID}_N_cells_{subj_cell_type}_rad_{radius}_t_range_{t_range}_focal_txy_{focal_time}_{focal_cell_xy[0]}_{focal_cell_xy[1]}.csv'
 
         if not os.path.exists(output_path):
             os.makedirs(output_path)
@@ -239,11 +391,11 @@ def N_cells(subject_cells, target_cell, radius, t_range, focal_time, num_bins):
     if num_bins:
         return N_cells_hist
 
-def N_events(event, subject_cells, target_cell, radius, t_range, focal_time, num_bins):
+def N_events(event, subject_cells, focal_cell, radius, t_range, focal_time, num_bins):
     if event == "DIVIDE":
 
         N_events = tools.event_counter(
-            event, subject_cells, target_cell, radius, t_range, focal_time
+            event, subject_cells, focal_cell, radius, t_range, focal_time
         )
         if num_bins:
             N_events_distance = [N_events[i][1] for i in range(0, len(N_events))]
@@ -264,12 +416,12 @@ def N_events(event, subject_cells, target_cell, radius, t_range, focal_time, num
         global output_path
         if output_path != "":
             subj_cell_type = "wt" if subject_cells[0].ID > 0 else "Scr"
-            target_cell_type = "wt" if target_cell.ID > 0 else "Scr"
-            target_cell_ID = str(target_cell.ID)
-            focal_index = target_cell.t.index(focal_time)
-            target_cell_xy = (int(target_cell.x[focal_index]), int(target_cell.y[focal_index]))
+            focal_cell_type = "wt" if focal_cell.ID > 0 else "Scr"
+            focal_cell_ID = str(focal_cell.ID)
+            focal_index = focal_cell.t.index(focal_time)
+            focal_cell_xy = (int(focal_cell.x[focal_index]), int(focal_cell.y[focal_index]))
 
-            raw_fn = f'{expt}_{position}_{target_cell_type}_{target_cell_ID}_N_events_{subj_cell_type}_rad_{radius}_t_range_{t_range}_focal_txy_{focal_time}_{target_cell_xy[0]}_{target_cell_xy[1]}.csv'
+            raw_fn = f'{expt}_{position}_{focal_cell_type}_{focal_cell_ID}_N_events_{subj_cell_type}_rad_{radius}_t_range_{t_range}_focal_txy_{focal_time}_{focal_cell_xy[0]}_{focal_cell_xy[1]}.csv'
 
             if not os.path.exists(output_path):
                 os.makedirs(output_path)
@@ -282,13 +434,13 @@ def N_events(event, subject_cells, target_cell, radius, t_range, focal_time, num
     if num_bins:
         return N_events_hist
 
-def P_event(event, subject_cells, target_cell, radius, t_range, focal_time, num_bins):
+def P_event(event, subject_cells, focal_cell, radius, t_range, focal_time, num_bins):
 
     N_cells_hist = N_cells(
-        subject_cells, target_cell, radius, t_range, focal_time, num_bins
+        subject_cells, focal_cell, radius, t_range, focal_time, num_bins
     )
     N_events_hist = N_events(
-        event, subject_cells, target_cell, radius, t_range, focal_time, num_bins
+        event, subject_cells, focal_cell, radius, t_range, focal_time, num_bins
     )
 
     P_events_hist = N_events_hist / (N_cells_hist + 1e-10)
@@ -317,11 +469,11 @@ def iterative_heatmap_generator(
     if raw_input_q == "y":
         raw_parent_dir = os.path.join(output_path.split("individual")[0], "raw_lists/")
 
-    for apop_ID in tqdm(apoptosis_time_dict):
+    for focal_ID in tqdm(apoptosis_time_dict):
         # try:
         # global expt, position
-        expt = "GV" + str(re.findall(r"GV(\d+)", apop_ID)[0])
-        position = re.findall(r"Pos(\d+)", apop_ID)[0]
+        expt = "GV" + str(re.findall(r"GV(\d+)", focal_ID)[0])
+        position = re.findall(r"Pos(\d+)", focal_ID)[0]
 
         position = "Pos" + position
 
@@ -329,8 +481,8 @@ def iterative_heatmap_generator(
             expt, position, ""
         )  ## additional '' here so that / added to end of string
 
-        cell_ID = int((re.findall(r"(\d+)_.FP", apop_ID))[0])
-        print("ID", apop_ID)
+        cell_ID = int((re.findall(r"(\d+)_.FP", focal_ID))[0])
+        print("ID", focal_ID)
 
         if expt_position not in hdf5_file_path:
             ## load that track data
@@ -340,29 +492,29 @@ def iterative_heatmap_generator(
                 for hdf5_file_path in tracking_filelist
                 if expt_position in hdf5_file_path
             ][0]
-            wt_cells, scr_cells, all_cells = dataio.load_tracking_data(hdf5_file_path)
+            wt_cells, mut_cells, all_cells = dataio.load_tracking_data(hdf5_file_path)
             print("Loaded", expt_position)
 
-        if "RFP" in apop_ID:
+        if "RFP" in focal_ID:
             cell_ID = -cell_ID
 
-        focal_time = int(apoptosis_time_dict[apop_ID])
+        focal_time = int(apoptosis_time_dict[focal_ID])
         try:
-            target_cell = [cell for cell in all_cells if cell.ID == cell_ID][0]
+            focal_cell = [cell for cell in all_cells if cell.ID == cell_ID][0]
         except:
-            error_message = apop_ID + " could not find cell_ID"
+            error_message = focal_ID + " could not find cell_ID"
             error_log.append(error_message)
             continue
-        if target_cell.in_frame(focal_time):
+        if focal_cell.in_frame(focal_time):
             ## calculate according to subject cell type
             if subject_cells == "WT":
                 N_cells_hist = N_cells(
-                    wt_cells, target_cell, radius, t_range, focal_time, num_bins
+                    wt_cells, focal_cell, radius, t_range, focal_time, num_bins
                 )
                 N_events_hist = N_events(
                     subject_event,
                     wt_cells,
-                    target_cell,
+                    focal_cell,
                     radius,
                     t_range,
                     focal_time,
@@ -370,12 +522,12 @@ def iterative_heatmap_generator(
                 )
             if subject_cells == "Scr":
                 N_cells_hist = N_cells(
-                    scr_cells, target_cell, radius, t_range, focal_time, num_bins
+                    mut_cells, focal_cell, radius, t_range, focal_time, num_bins
                 )
                 N_events_hist = N_events(
                     subject_event,
-                    scr_cells,
-                    target_cell,
+                    mut_cells,
+                    focal_cell,
                     radius,
                     t_range,
                     focal_time,
@@ -383,20 +535,20 @@ def iterative_heatmap_generator(
                 )
             if subject_cells == "All":
                 N_cells_hist = N_cells(
-                    all_cells, target_cell, radius, t_range, focal_time, num_bins
+                    all_cells, focal_cell, radius, t_range, focal_time, num_bins
                 )
                 N_events_hist = N_events(
                     subject_event,
                     all_cells,
-                    target_cell,
+                    focal_cell,
                     radius,
                     t_range,
                     focal_time,
                     num_bins,
                 )
 
-            N_cells_fn = os.path.join(output_path, (apop_ID + "_N_cells"))
-            N_events_fn = os.path.join(output_path, (apop_ID + "_N_events"))
+            N_cells_fn = os.path.join(output_path, (focal_ID + "_N_cells"))
+            N_events_fn = os.path.join(output_path, (focal_ID + "_N_events"))
             np.save(N_cells_fn, N_cells_hist)
             np.save(N_events_fn, N_events_hist)
             success_message = (
@@ -407,16 +559,15 @@ def iterative_heatmap_generator(
         else:
             print("Focal time not in frame")
             error_message = (
-                apop_ID
+                focal_ID
                 + " apoptosis time t="
                 + str(focal_time)
                 + " not in cell range "
-                + str(range(target_cell.t[0], target_cell.t[-1]))
+                + str(range(focal_cell.t[0], focal_cell.t[-1]))
             )
             error_log.append(error_message)
 
     return cell_count, error_log, success_log
-
 
 def iterative_control_heatmap_generator(
     focal_cells,
@@ -466,7 +617,7 @@ def iterative_control_heatmap_generator(
                     for hdf5_file_path in tracking_filelist
                     if expt_position in hdf5_file_path
                 ][0]
-                wt_cells, scr_cells, all_cells = dataio.load_tracking_data(
+                wt_cells, mut_cells, all_cells = dataio.load_tracking_data(
                     hdf5_file_path
                 )
                 print("Loaded", expt_position)
@@ -483,22 +634,22 @@ def iterative_control_heatmap_generator(
                     cells = [
                         cell for cell in wt_cells if len(cell) > 100
                     ]  ## >100 eliminates possibility of being false track
-                    target_cell = random.choice(cells)
+                    focal_cell = random.choice(cells)
                 if focal_cells == "Scr":
                     cells = [
-                        cell for cell in scr_cells if len(cell) > 100
+                        cell for cell in mut_cells if len(cell) > 100
                     ]  ## >100 eliminates possibility of being false track
-                    target_cell = random.choice(cells)
+                    focal_cell = random.choice(cells)
                 if focal_cells == "All":
                     cells = [
                         cell for cell in all_cells if len(cell) > 100
                     ]  ## >100 eliminates possibility of being false track
-                    target_cell = random.choice(cells)
+                    focal_cell = random.choice(cells)
 
-                focal_time = random.choice(target_cell.t)
+                focal_time = random.choice(focal_cell.t)
 
                 cell_ID = "{}_{}_ID:{}_t:{}".format(
-                    expt, position, target_cell.ID, focal_time
+                    expt, position, focal_cell.ID, focal_time
                 )
 
             except:
@@ -509,12 +660,12 @@ def iterative_control_heatmap_generator(
             ## calculate according to subject cell type
             if subject_cells == "WT":
                 N_cells_hist = N_cells(
-                    wt_cells, target_cell, radius, t_range, focal_time, num_bins
+                    wt_cells, focal_cell, radius, t_range, focal_time, num_bins
                 )
                 N_events_hist = N_events(
                     subject_event,
                     wt_cells,
-                    target_cell,
+                    focal_cell,
                     radius,
                     t_range,
                     focal_time,
@@ -522,12 +673,12 @@ def iterative_control_heatmap_generator(
                 )
             if subject_cells == "Scr":
                 N_cells_hist = N_cells(
-                    scr_cells, target_cell, radius, t_range, focal_time, num_bins
+                    mut_cells, focal_cell, radius, t_range, focal_time, num_bins
                 )
                 N_events_hist = N_events(
                     subject_event,
-                    scr_cells,
-                    target_cell,
+                    mut_cells,
+                    focal_cell,
                     radius,
                     t_range,
                     focal_time,
@@ -535,12 +686,12 @@ def iterative_control_heatmap_generator(
                 )
             if subject_cells == "All":
                 N_cells_hist = N_cells(
-                    all_cells, target_cell, radius, t_range, focal_time, num_bins
+                    all_cells, focal_cell, radius, t_range, focal_time, num_bins
                 )
                 N_events_hist = N_events(
                     subject_event,
                     all_cells,
-                    target_cell,
+                    focal_cell,
                     radius,
                     t_range,
                     focal_time,
@@ -563,8 +714,8 @@ def stat_relevance_calc(num_bins, P_events, P_events_c, cv, cv_c):
     """
     Function that takes two probability arrays (canon and control), their associated coefficient of variation and calculates the statistical relevance of each bin
     """
-    larger_than_array = np.zeros((num_bins, num_bins))
-    sig_dif_array = np.zeros((num_bins, num_bins))
+    larger_than_array = np.zeros(num_bins)
+    sig_dif_array = np.zeros(num_bins)
     for i, row in enumerate(P_events):
         for j, element in enumerate(row):
             P_div = P_events[i, j]
@@ -613,14 +764,14 @@ def cumulative_division_counter(
     cumulative_N_cells_hist = np.zeros((num_bins, num_bins))
     cumulative_N_events_hist = np.zeros((num_bins, num_bins))
 
-    for apop_ID in apoptosis_time_dict:
-        expt = "GV" + str(re.findall(r"GV(\d+)", apop_ID)[0])
-        position = re.findall(r"Pos(\d+)", apop_ID)[0]
+    for focal_ID in apoptosis_time_dict:
+        expt = "GV" + str(re.findall(r"GV(\d+)", focal_ID)[0])
+        position = re.findall(r"Pos(\d+)", focal_ID)[0]
         position = "Pos" + position
         expt_position = os.path.join(
             expt, position, ""
         )  ## additional '' here so that / added to end of string
-        print("ID", apop_ID)
+        print("ID", focal_ID)
 
         if expt_position not in hdf5_file_path:
             ## load that track data
@@ -630,47 +781,47 @@ def cumulative_division_counter(
                 for hdf5_file_path in tracking_filelist
                 if expt_position in hdf5_file_path
             ][0]
-            wt_cells, scr_cells, all_cells = dataio.load_tracking_data(hdf5_file_path)
+            wt_cells, mut_cells, all_cells = dataio.load_tracking_data(hdf5_file_path)
             print("Loaded", expt_position)
 
         ## get truest cell_ID from npz file along with time to realign chris' apop time
         path_to_npz = [
             path_to_npz
             for path_to_npz in apoptoses_metadata_filelist
-            if apop_ID.split("FP")[0] in path_to_npz
+            if focal_ID.split("FP")[0] in path_to_npz
         ][
             0
-        ]  ## this pulls the npz path from a list of npz paths by matching the apop_ID str prior to final label (ie fake/long_apop) as some of the final labels arent reflected in npz fn
+        ]  ## this pulls the npz path from a list of npz paths by matching the focal_ID str prior to final label (ie fake/long_apop) as some of the final labels arent reflected in npz fn
         with np.load(path_to_npz) as npz:
             t = npz["t"]
             cell_ID = int(npz["ID"])
-        if "RFP" in apop_ID:
+        if "RFP" in focal_ID:
             cell_ID = -cell_ID
 
-        focal_time = apoptosis_time_dict[apop_ID]
+        focal_time = apoptosis_time_dict[focal_ID]
         try:
-            target_cell = [cell for cell in all_cells if cell.ID == cell_ID][0]
+            focal_cell = [cell for cell in all_cells if cell.ID == cell_ID][0]
         except:
-            error_message = apop_ID + " could not find cell_ID"
+            error_message = focal_ID + " could not find cell_ID"
             error_log.append(error_message)
             continue
-        if target_cell.in_frame(focal_time):
+        if focal_cell.in_frame(focal_time):
             ## calculate -- NEED SUBJEcT CeLL choice and event choice
             cumulative_N_cells_hist += N_cells(
-                wt_cells, target_cell, radius, t_range, focal_time, num_bins
+                wt_cells, focal_cell, radius, t_range, focal_time, num_bins
             )
             cumulative_N_events_hist += N_events(
-                "DIVIDE", wt_cells, target_cell, radius, t_range, focal_time, num_bins
+                "DIVIDE", wt_cells, focal_cell, radius, t_range, focal_time, num_bins
             )
             cell_count += 1
         else:
             print("Focal time not in frame!!!!!!!!!!!")
             error_message = (
-                apop_ID
+                focal_ID
                 + " apoptosis time t="
                 + str(focal_time)
                 + " not in cell range "
-                + str(range(target_cell.t[0], target_cell.t[-1]))
+                + str(range(focal_cell.t[0], focal_cell.t[-1]))
             )
             error_log.append(error_message)
     return cumulative_N_cells_hist, cumulative_N_events_hist, cell_count, error_log

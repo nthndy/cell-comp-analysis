@@ -24,12 +24,57 @@ import json
 import os
 import random
 import re
-import pandas as pd
+
 import btrack
 import numpy as np
+import pandas as pd
+from tools import basic_euc_dist, focal_xyt_finder
 #from btrack.utils import import_HDF, import_JSON, tracks_to_napari
 from tqdm.auto import tqdm
-from tools import basic_euc_dist, focal_xyt_finder
+
+
+def eliminate_duplicates(N_cells_df, R_max, t_range, bins):
+    """
+    In the radial analysis, division events (or other rare events) are naturally
+    counted only once as they exists as a transient state classifications.
+    However cell counts are repeated for every frame that cell appears in over
+    any one temporal bin. This function eliminates duplicate counts for a given
+    cell count dataframe by segregating it into single temporal bin dataframes,
+    removing the duplicates for a single temporal bin, then concatenating those
+    dataframes back together
+
+    N_cells_df : pd.DataFrame
+        Radial scan dataframe of cells or divisions from focal scan, need Cell ID
+        and Focal ID and formatted in the final form with Time Since Apop and
+        Distance since apoptosis etc
+
+    R_max : int
+        Maximum spatial scan of DataFrame
+
+    t_range : tuple
+        Temporal range of scan
+
+    bins : int
+        Number of bins to seperate temporal range into, crucial variable as need
+        to know which duplicates to delete per bin
+
+    """
+    ### discretise the temporal range
+    disc_t_range = np.linspace(t_range[0], t_range[1], bins+1)
+    ### placeholder dataframe
+    N_cells_unique_df = pd.DataFrame(columns=N_cells_df.columns)
+    for n, i in enumerate(disc_t_range):
+        ### create new df with only one spatial bin
+        disc_temp_df = N_cells_df.loc[(N_cells_df['Time since apoptosis'] >= disc_t_range[n]) & (N_cells_df['Time since apoptosis'] <= disc_t_range[n+1]) & (N_cells_df['Distance from apoptosis'] <= R_max)]
+        ### drop duplicate cells in that one temporal bin
+        disc_temp_df.drop_duplicates(subset=['Cell ID', 'Focal ID'], inplace = True, keep = 'first')
+        ### append that unique temporal bin to new df
+        N_cells_unique_df = N_cells_unique_df.append(disc_temp_df, ignore_index=True)
+        ### break the iterations as the last temporal bin reached
+        if n == len(disc_t_range) -2:
+            break
+    return N_cells_unique_df
+
 
 def load_focal_df(focal_ID):
     """
@@ -70,8 +115,12 @@ def convert_csv_to_feather(file_list):
         ### load csv
         df = pd.read_csv(file, names = ['Cell ID', 'Distance from apoptosis', 'Frame', 'x', 'y'])
         if len(df) == 0:
-            import warnings
-            warnings.warn(f"{file} seems to be an empty file, continuing to next file")
+            print(f"{file} seems to be an empty file, not creating feather df")
+            # df['Time since apoptosis'] = df['Frame'] - apo_t
+            # df['Focal ID'] = [apop_ID] * len(df)
+            # new_fn = file.replace('.csv','.feather')
+            # df.reset_index()
+            # df.to_feather(new_fn)
             continue
         ### tidy up dataframe
         df['Cell ID'] = df['Cell ID'].str.replace('[()]', '')
@@ -87,7 +136,14 @@ def convert_csv_to_feather(file_list):
         new_fn = (file.replace('xyt/1600.1600', 'xyt/feather')).replace('.csv','.feather')
         df.to_feather(new_fn)
 
-def feather_load_radial_df(single_scan_file_list, maximum_R = None, crop_amount = 10, fixed_apop_location = False, streamline = True, strict_filtering = False, frame_filtering = False):
+def feather_load_radial_df(single_scan_file_list,
+                            maximum_R = None,
+                            crop_amount = 10,
+                            fixed_apop_location = False,
+                            streamline = True,
+                            strict_filtering = False,
+                            frame_filtering = False,
+                            remove_duplicates = False):
 
     """
     A QUICKER function to load each individual radial analysis scan and concatenate them into a cumulative pandas dataframe.
@@ -121,6 +177,11 @@ def feather_load_radial_df(single_scan_file_list, maximum_R = None, crop_amount 
     frame_fitlering : bool
         if true deletes any frames in the main df that mean a scan of radius r is outside the fov
 
+    remove_duplicates : bool or dict
+        sorry this isnt the best implementation but default this is false, if not
+        then you need to provide the R_max, t_range and bins you want the dataframe
+        to be seperated into in order to remove duplicate counts of cells per each
+        temporal bin
     """
 
     radial_scan_df = []
@@ -173,7 +234,15 @@ def feather_load_radial_df(single_scan_file_list, maximum_R = None, crop_amount 
             df = pd.read_feather(file)
         except:
             print('Not a feather file so loading slower .csv instead')
-            df = pd.read_csv(file)
+            df = pd.read_csv(file, names = ['Cell ID', 'Distance from apoptosis', 'Frame', 'x', 'y'])
+            ### tidy up dataframe
+            df['Cell ID'] = df['Cell ID'].str.replace('[()]', '')
+            df['y'] = df['y'].str.replace('[()]', '')
+            df = df.astype(int)
+            ### normalise time
+            df['Time since apoptosis'] = df['Frame'] - apo_t
+            ### add apop ID to dataframe
+            df['Focal ID'] = [apop_ID] * len(df)
         ### eliminate boundary counts spatially
         df = df.loc[(df['x'] >= crop_amount) & (df['x'] <= 1200-crop_amount) & (df['y'] >= crop_amount) & (df['y'] <= 1600-crop_amount)]
         ### eliminate boundary effects temporally (ie. if scan exits fov at any time point) by deleting those frames from the scan
@@ -195,6 +264,12 @@ def feather_load_radial_df(single_scan_file_list, maximum_R = None, crop_amount 
                     focal_ID = row['Focal ID']
                     focal_x, focal_y, focal_t = focal_xyt_finder(focal_ID, single_scan_file_list)
                     df.at[i, 'Distance from apoptosis'] = basic_euc_dist(row['x'], row['y'], focal_x, focal_y) / 3 ### scaled from pixels to micrometers
+
+        if not remove_duplicates == False:
+            R_max = remove_duplicates['R_max']
+            t_range = remove_duplicates['t_range']
+            bins = remove_duplicates['bins']
+            df = eliminate_duplicates(df, R_max, t_range, bins)
 
         if streamline:
             del df['x'], df['y'], df['Cell ID'], df['Frame']
@@ -338,6 +413,7 @@ def load_tracking_data(tracks_path):
     The wild-type cells will have positive integer IDs and the mutant population will have negative integer IDs
     """
     import btrack
+
     # from btrack.utils import import_HDF, import_JSON
 
     print("Btrack version no.:", btrack.__version__)
@@ -376,6 +452,11 @@ def apoptosis_list_loader(path_to_apop_lists, focal_cell):
                     apop_dict[apop_ID.split()[0]] = apop_ID.split()[1]
     return apop_dict
 
+def event_dict_loader(path_to_dict):
+    import json
+    with open(path_to_dict) as f:
+        event_dict = json.load(f)
+    return event_dict
 
 def hdf5_file_finder(hdf5_parent_folder):
     """
@@ -387,7 +468,11 @@ def hdf5_file_finder(hdf5_parent_folder):
     unaligned_hdf5_file_list = glob.glob(
         os.path.join(hdf5_parent_folder, "GV****/Pos*/HDF/segmented.hdf5")
     )
-    hdf5_file_list = aligned_hdf5_file_list + unaligned_hdf5_file_list
+    ### new format of h5 tracking file
+    h5_file_list = glob.glob(
+        os.path.join(hdf5_parent_folder, "******/Pos*/tracks.h5")
+    )
+    hdf5_file_list = aligned_hdf5_file_list + unaligned_hdf5_file_list + h5_file_list
     if len(hdf5_file_list) < 1:
         print("No HDF5 files found")
     return hdf5_file_list

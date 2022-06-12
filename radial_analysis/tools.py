@@ -28,6 +28,7 @@ import re
 import numpy as np
 from tqdm import tqdm
 
+
 def focal_xyt_finder(focal_ID, file_list):
     """
     Simple function to pull xy coords from correctly formatted radial scan fn
@@ -108,7 +109,7 @@ def basic_euc_dist(x1, y1, x2, y2):
     return np.sqrt(delta_x**2+delta_y**2)
 
 
-def euc_dist(target_cell, other_cell, frame, focal_time):
+def euc_dist(target_cell, other_cell, frame, focal_time, stationary):
     """
     An important function that calculates the distance between two cells at a
     given frame in the timelapse microscope movie. If the cell has gone through
@@ -116,10 +117,13 @@ def euc_dist(target_cell, other_cell, frame, focal_time):
     the cell does not exist at that frame then a `np.inf` distance will be
     returned.
     """
+    ### if the scan time point is before the movie then skip
+    if frame < 0:
+        return np.inf
     try:
         if (
-            frame > focal_time
-        ):  ## this way ensures analytical continuity for control instance ##  target_cell.t[-1]: ## if the frame of the scan is beyond the final frame of the apoptotic cell then use the apoptosis location (ie if the cell has died then fix the scan location at the apoptotic frame location)
+            frame > focal_time or stationary == True
+        ) :  ## this way ensures analytical continuity for control instance ##  target_cell.t[-1]: ## if the frame of the scan is beyond the final frame of the apoptotic cell then use the apoptosis location (ie if the cell has died then fix the scan location at the apoptotic frame location)
             idx0 = target_cell.t.index(focal_time)  ## could also do just ## apop_index
         else:
             idx0 = target_cell.t.index(frame)
@@ -127,7 +131,27 @@ def euc_dist(target_cell, other_cell, frame, focal_time):
     except:
         return (
             np.inf
-        )  ## if the other_cell does not exist for frame then returns the euc dist as np.inf
+        )  ## if the other_cell does not exist for frame then returns the euc dist as np.inf, which is not recorded in the final collection of distances (bc > radius)
+
+    dx = target_cell.x[idx0] - other_cell.x[idx1]
+    dy = target_cell.y[idx0] - other_cell.y[idx1]
+
+    return np.sqrt(dx ** 2 + dy ** 2)
+
+def euc_dist_fixed(target_cell, other_cell, frame, focal_time):
+    """
+    An important function that calculates the distance between two cells at a
+    given frame in the timelapse microscope movie. For the fixed version of this
+    distance is between any cell and the fixed event location at focal time
+    """
+    try:
+
+        idx0 = target_cell.t.index(focal_time)  ## could also do just ## apop_index
+        idx1 = other_cell.t.index(frame)  ## t.index provides the index of that frame
+    except:
+        return (
+            np.inf
+        )  ## if the other_cell does not exist for frame then returns the euc dist as np.inf, which is not recorded in the final collection of distances (bc > radius)
 
     dx = target_cell.x[idx0] - other_cell.x[idx1]
     dy = target_cell.y[idx0] - other_cell.y[idx1]
@@ -135,7 +159,7 @@ def euc_dist(target_cell, other_cell, frame, focal_time):
     return np.sqrt(dx ** 2 + dy ** 2)
 
 
-def cell_counter(subject_cells, target_cell, radius, t_range, focal_time):
+def cell_counter(subject_cells, target_cell, radius, t_range, focal_time, stationary= False):
     """
     Takes a population of subject cells and a single target cell and counts the
     spatial and temporal distance between each subject cell and the target cell
@@ -151,7 +175,7 @@ def cell_counter(subject_cells, target_cell, radius, t_range, focal_time):
                     round(
                         (
                             euc_dist(
-                                target_cell, cell, (focal_time + delta_t), focal_time
+                                target_cell, cell, (focal_time + delta_t), focal_time, stationary
                             )
                         ),
                         2,
@@ -164,13 +188,13 @@ def cell_counter(subject_cells, target_cell, radius, t_range, focal_time):
         )
         for delta_t in range(-int(t_range / 2), int(t_range / 2))
         for cell in subject_cells
-        if euc_dist(target_cell, cell, focal_time + delta_t, focal_time) < radius
+        if euc_dist(target_cell, cell, focal_time + delta_t, focal_time, stationary) < radius
         and cell.ID != target_cell.ID
     ]
     return cells
 
 
-def event_counter(event, subject_cells, target_cell, radius, t_range, focal_time):
+def event_counter(event, subject_cells, target_cell, radius, t_range, focal_time, stationary = False):
     """
     Similar to the previous function, except this counts cellular events
     specified by an extra positional argument:
@@ -191,14 +215,14 @@ def event_counter(event, subject_cells, target_cell, radius, t_range, focal_time
             tuple(
                 (
                     (cell.ID),
-                    (round((euc_dist(target_cell, cell, apoptosis_time(cell), focal_time)), 2)),
+                    (round((euc_dist(target_cell, cell, apoptosis_time(cell), focal_time, stationary)), 2)),
                     apoptosis_time(cell),
                     int(cell.x[cell.t.index(apoptosis_time(cell))]),
                     int(cell.y[cell.t.index(apoptosis_time(cell))]),
                 )
             )
             for cell in subject_cells
-            if euc_dist(target_cell, cell, apoptosis_time(cell), focal_time) < radius
+            if euc_dist(target_cell, cell, apoptosis_time(cell), focal_time, stationary) < radius
             and apoptosis_time(cell) #
             in range(focal_time - int(t_range / 2), focal_time + int(t_range / 2))
             and cell.fate.name == event
@@ -210,14 +234,14 @@ def event_counter(event, subject_cells, target_cell, radius, t_range, focal_time
             tuple(
                 (
                     (cell.ID),
-                    (round((euc_dist(target_cell, cell, cell.t[-1], focal_time)), 2)),
+                    (round((euc_dist(target_cell, cell, cell.t[-1], focal_time, stationary)), 2)),
                     (cell.t[-1]),
                     int(cell.x[-1]),
                     int(cell.y[-1]),
                 )
             )  ### this point of division is reliably the last frame of the dividing cell
             for cell in subject_cells
-            if euc_dist(target_cell, cell, cell.t[-1], focal_time) < radius
+            if euc_dist(target_cell, cell, cell.t[-1], focal_time, stationary) < radius
             and cell.t[-1]
             in range(focal_time - int(t_range / 2), focal_time + int(t_range / 2))
             and cell.fate.name == event

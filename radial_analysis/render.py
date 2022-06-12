@@ -33,11 +33,50 @@ import matplotlib.font_manager
 import matplotlib.pyplot as plt
 import napari
 import numpy as np
+import pandas as pd
 import tools
 #from btrack.utils import import_HDF, import_JSON, tracks_to_napari
 from natsort import natsorted
 from skimage.io import imread
+from tqdm.auto import tqdm
 from tqdm.notebook import tnrange, tqdm, tqdm_notebook
+
+
+def densify_dist(dist_2d, spatial_bins):
+    """
+    Function to take a 2d histogram distribution of events and turn it into a
+    density representation (ie take each spatial bin and divide by the area)
+    """
+    radial_areas = (spatial_bins**2)*np.pi
+    rad_ring_areas = np.stack([int(radial_areas[n]-radial_areas[n-1]) for n in range(1, len(radial_areas))])
+    density_dist = dist_2d/rad_ring_areas
+    return density_dist
+
+def eliminate_duplicates(N_cells_df, R_max, t_range, bins):
+    """
+    In the radial analysis, division events (or other rare events) are naturally
+    counted only once as they exists as a transient state classifications.
+    However cell counts are repeated for every frame that cell appears in over
+    any one temporal bin. This function eliminates duplicate counts for a given
+    cell count dataframe by segregating it into single temporal bin dataframes,
+    removing the duplicates for a single temporal bin, then concatenating those
+    dataframes back together
+    """
+    ### discretise the temporal range
+    disc_t_range = np.linspace(t_range[0], t_range[1], bins+1)
+    ### placeholder dataframe
+    N_cells_unique_df = pd.DataFrame(columns=N_cells_df.columns)
+    for n, i in tqdm(enumerate(disc_t_range), total = len(disc_t_range) -2, desc = 'Removing duplicates'):
+        ### create new df with only one spatial bin
+        disc_temp_df = N_cells_df.loc[(N_cells_df['Time since apoptosis'] >= disc_t_range[n]) & (N_cells_df['Time since apoptosis'] <= disc_t_range[n+1]) & (N_cells_df['Distance from apoptosis'] <= R_max)]
+        ### drop duplicate cells in that one temporal bin
+        disc_temp_df.drop_duplicates(subset=['Cell ID', 'Focal ID'], inplace = True, keep = 'first')
+        ### append that unique temporal bin to new df
+        N_cells_unique_df = N_cells_unique_df.append(disc_temp_df, ignore_index=True)
+        ### break the iterations as the last temporal bin reached
+        if n == len(disc_t_range) -2:
+            break
+    return N_cells_unique_df
 
 """
 Graph rendering below
@@ -49,18 +88,39 @@ Two main components to this file, The first is a newer
 class-based method of plotting that I am testing. The second is the old function based way.
 """
 
-def render_from_df(N_events_df, N_cells_df, bins, t_range, R_max):
+def render_from_df(N_events_df, N_cells_df, bins, t_range, R_range):
+    """
+    Take 2 input dataframes of events and cell apperances and render a ratio plot of the two according to the provided params
 
+    N_events_df : pd.DataFrame
+        Dataframe showing the cumulative spatiotemporal distribution of cellular events around a series of
+        focal events. For example, the distributions of divisions around focal apoptoses.
+
+    N_cells_df : pd.DataFrame
+        Corresponding dataframe showing the cumulative spatiotemporal distribution of cells around a series of focal events.
+
+    bins : int or tuple
+        How to plot the provided data in a 2d histogram. If int then symmetric histogram is plotted.
+
+    t_range : tuple
+        Range of the x axis of the histogram
+
+    R_range : tuple
+        Range of the y axis of the histogram
+
+    """
     t_min = min(t_range)
     t_max = max(t_range)
-    N_events_constrained_df = N_events_df.loc[(N_events_df['Time since apoptosis'] >= t_min) & (N_events_df['Time since apoptosis'] <= t_max) & (N_events_df['Distance from apoptosis'] <= R_max)]
-    N_cells_constrained_df = N_cells_df.loc[(N_cells_df['Time since apoptosis'] >= t_min) & (N_cells_df['Time since apoptosis'] <= t_max) & (N_cells_df['Distance from apoptosis'] <= R_max)]
+    R_min = min(R_range)
+    R_max = max(R_range)
+    N_events_constrained_df = N_events_df.loc[(N_events_df['Time since apoptosis'] >= t_min) & (N_events_df['Time since apoptosis'] <= t_max) & (N_events_df['Distance from apoptosis'] >= R_min) & (N_events_df['Distance from apoptosis'] <= R_max)]
+    N_cells_constrained_df = N_cells_df.loc[(N_cells_df['Time since apoptosis'] >= t_min) & (N_cells_df['Time since apoptosis'] <= t_max) & (N_cells_df['Distance from apoptosis'] >= R_min) & (N_cells_df['Distance from apoptosis'] <= R_max)]
 
     N_events, xedges, yedges, _ = plt.hist2d(N_events_constrained_df['Time since apoptosis'], N_events_constrained_df['Distance from apoptosis'],
-                      bins=bins, cmap='Blues')
+                      bins=bins, cmap='Blues', range=(t_range, (R_min,R_max)))
     plt.clf()
     N_cells, xedges, yedges, _ = plt.hist2d(N_cells_constrained_df['Time since apoptosis'], N_cells_constrained_df['Distance from apoptosis'],
-                      bins=bins, cmap='Blues')
+                      bins=bins, cmap='Blues', range=(t_range, (R_min,R_max)))
     plt.clf()
 
     P_events = N_events/N_cells
@@ -273,8 +333,8 @@ class Heatmap:
         if bin_labels == True:
             flipped = np.flipud(self.array)
             if self.scan_details.get('input_type') == "P_events":
-                for i in range(len(input_2d_hist)):
-                    for j in range(len(input_2d_hist)):
+                for i in range(len(self.num_bins)):
+                    for j in range(len(self.num_bins)):
                         text = plt.text(
                             j,
                             i,
@@ -285,8 +345,8 @@ class Heatmap:
                             fontsize="xx-small",
                         )
             elif self.scan_details.get('input_type') == "dP":
-                for i in range(len(input_2d_hist)):
-                    for j in range(len(input_2d_hist)):
+                for i in range(len(self.num_bins)):
+                    for j in range(len(self.num_bins)):
                         text = plt.text(
                             j,
                             i,
@@ -297,8 +357,8 @@ class Heatmap:
                             fontsize="xx-small",
                         )
             elif self.scan_details.get('input_type') == "CV":
-                for i in range(len(input_2d_hist)):
-                    for j in range(len(input_2d_hist)):
+                for i in range(len(self.num_bins)):
+                    for j in range(len(self.num_bins)):
                         text = plt.text(
                             j,
                             i,
@@ -309,8 +369,8 @@ class Heatmap:
                             fontsize="xx-small",
                         )
             if self.scan_details.get('input_type') == "stat_rel":
-                for i in range(len(input_2d_hist)):
-                    for j in range(len(input_2d_hist)):
+                for i in range(len(self.num_bins)):
+                    for j in range(len(self.num_bins)):
                         text = plt.text(
                             j,
                             i,
@@ -321,8 +381,8 @@ class Heatmap:
                             fontsize="xx-small",
                         )
             else:
-                for i in range(len(input_2d_hist)):
-                    for j in range(len(input_2d_hist)):
+                for i in range(len(self.num_bins)):
+                    for j in range(len(self.num_bins)):
                         text = plt.text(
                             j,
                             i,
